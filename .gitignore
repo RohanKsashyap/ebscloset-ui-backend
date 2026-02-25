@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.git_disabled
+
+# Build output
+dist/
+build/
+
+# Runtime folders
+bin/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.production
+.env.development
+
+# Coverage reports
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Cache & temp
+.cache/
+.tmp/
+*.swp
+
+# Uploads (if you store files locally)
+uploads/
+
+# Database files (if any local DB)
+*.sqlite
+*.db
