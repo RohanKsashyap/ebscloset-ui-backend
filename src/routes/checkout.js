@@ -2,6 +2,7 @@ const { Router } = require('express');
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
+const auth = require('../middleware/auth');
 const router = Router();
 const { sendOrderConfirmation } = require('../utils/email');
 const { decrementStock } = require('../utils/inventory');
@@ -139,6 +140,21 @@ router.get('/order/:id', async (req, res) => {
   } catch (err) {
     console.error('Error fetching order:', err);
     res.status(500).json({ message: 'Error fetching order' });
+  }
+});
+
+router.get('/orders', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).populate('orders');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    // Return orders sorted by createdAt descending
+    const orders = user.orders.sort((a, b) => b.createdAt - a.createdAt);
+    res.json(orders);
+  } catch (err) {
+    console.error('Error fetching orders:', err);
+    res.status(500).json({ message: 'Error fetching orders' });
   }
 });
 

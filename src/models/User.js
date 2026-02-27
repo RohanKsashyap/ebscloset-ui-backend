@@ -26,6 +26,16 @@ const UserSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  addresses: [{
+    type: { type: String, default: 'Home' },
+    fullName: String,
+    address: String,
+    city: String,
+    postalCode: String,
+    country: String,
+    phone: String,
+    isPrimary: { type: Boolean, default: false }
+  }],
   address: {
     type: String,
     trim: true

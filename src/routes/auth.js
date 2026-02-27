@@ -292,4 +292,155 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// @route   PUT /api/auth/profile
+// @desc    Update user profile
+// @access  Private
+router.put('/profile', auth, async (req, res) => {
+  try {
+    const { fullName, email, phone } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    if (fullName) user.fullName = fullName;
+    if (email) {
+      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      if (existingUser && existingUser.id !== user.id) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+      user.email = email.toLowerCase();
+    }
+    if (phone) user.phone = phone;
+
+    await user.save();
+    res.json({
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      role: user.role
+    });
+  } catch (err) {
+    console.error('Update profile error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/auth/password
+// @desc    Update user password
+// @access  Private
+router.put('/password', auth, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid current password' });
+    }
+
+    user.password = newPassword;
+    await user.save();
+    res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Update password error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   GET /api/auth/addresses
+// @desc    Get user saved addresses
+// @access  Private
+router.get('/addresses', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    res.json(user.addresses || []);
+  } catch (err) {
+    console.error('Get addresses error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   POST /api/auth/addresses
+// @desc    Add new address
+// @access  Private
+router.post('/addresses', auth, async (req, res) => {
+  try {
+    const { type, fullName, address, city, postalCode, country, phone, isPrimary } = req.body;
+    const user = await User.findById(req.user.id);
+
+    if (isPrimary) {
+      user.addresses.forEach(addr => addr.isPrimary = false);
+    }
+
+    const newAddress = {
+      type: type || 'Home',
+      fullName,
+      address,
+      city,
+      postalCode,
+      country,
+      phone,
+      isPrimary: isPrimary || user.addresses.length === 0
+    };
+
+    user.addresses.push(newAddress);
+    await user.save();
+    res.status(201).json(user.addresses);
+  } catch (err) {
+    console.error('Add address error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   PUT /api/auth/addresses/:id
+// @desc    Update address
+// @access  Private
+router.put('/addresses/:id', auth, async (req, res) => {
+  try {
+    const { type, fullName, address, city, postalCode, country, phone, isPrimary } = req.body;
+    const user = await User.findById(req.user.id);
+    const addressIdx = user.addresses.findIndex(addr => addr._id.toString() === req.params.id);
+
+    if (addressIdx === -1) return res.status(404).json({ message: 'Address not found' });
+
+    if (isPrimary) {
+      user.addresses.forEach(addr => addr.isPrimary = false);
+    }
+
+    user.addresses[addressIdx] = {
+      ...user.addresses[addressIdx],
+      type: type || user.addresses[addressIdx].type,
+      fullName: fullName || user.addresses[addressIdx].fullName,
+      address: address || user.addresses[addressIdx].address,
+      city: city || user.addresses[addressIdx].city,
+      postalCode: postalCode || user.addresses[addressIdx].postalCode,
+      country: country || user.addresses[addressIdx].country,
+      phone: phone || user.addresses[addressIdx].phone,
+      isPrimary: isPrimary !== undefined ? isPrimary : user.addresses[addressIdx].isPrimary
+    };
+
+    await user.save();
+    res.json(user.addresses);
+  } catch (err) {
+    console.error('Update address error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// @route   DELETE /api/auth/addresses/:id
+// @desc    Delete address
+// @access  Private
+router.delete('/addresses/:id', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    user.addresses = user.addresses.filter(addr => addr._id.toString() !== req.params.id);
+    await user.save();
+    res.json(user.addresses);
+  } catch (err) {
+    console.error('Delete address error:', err.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;
