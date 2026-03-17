@@ -28,12 +28,14 @@ const productSchema = new mongoose.Schema({
   inStock: { type: Number, default: 0 },
   size: { type: String, default: '' }, // Size information (e.g., S, M, L, XL)
   minStock: { type: Number, default: 5 }, // Minimum stock threshold for "few left" indicator
-  featured: { type: Boolean, default: false },
-  assured: { type: Boolean, default: false }, // Indicates if product is "Assured" quality
+  newarrival: { type: Boolean, default: false },
+  trending: { type: Boolean, default: false },
+  bestseller: { type: Boolean, default: false },
+  assured: { type: Boolean, default: false },
   variants: [{ 
     name: String, 
     size: { type: String, default: '' },
-    price: Number, 
+    price: { type: Number, default: '' }, 
     inStock: { type: Number, default: 0 },
     minStock: { type: Number, default: 5 } // Minimum stock threshold for variants
   }]

@@ -26,6 +26,13 @@ const sanitizeString = (val) => {
   return val;
 };
 
+ // Helper to get first file if it's an array
+ const getFirstFile = (file) => {
+  if (Array.isArray(file)) return file[0];
+  return file;
+};
+
+
 // Middleware for file uploads
 router.use(fileUpload({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
@@ -65,7 +72,9 @@ router.post('/products', async (req, res) => {
     const inStock = req.body.inStock;
     const size = sanitizeString(req.body.size);
     const minStock = req.body.minStock;
-    const featured = req.body.featured;
+    const trending = req.body.trending;
+    const bestseller = req.body.bestseller;
+    const newarrival = req.body.newarrival;
     const assured = req.body.assured;
     
     let imageUrl = '';
@@ -92,11 +101,7 @@ router.post('/products', async (req, res) => {
     let video3Url = '';
     let video3Id = '';
     
-    // Helper to get first file if it's an array
-    const getFirstFile = (file) => {
-      if (Array.isArray(file)) return file[0];
-      return file;
-    };
+   
 
     // Handle image upload if file is provided
     const imageFile = getFirstFile(req.files?.image);
@@ -239,7 +244,9 @@ router.post('/products', async (req, res) => {
       inStock: Number(inStock),
       size: size || '',
       minStock: Number(minStock) || 5, // Default to 5 if not provided
-      featured: featured === 'true' || featured === true,
+      trending: trending === 'true' || trending === true,
+      bestseller: bestseller === 'true' || bestseller === true,
+      newarrival: newarrival === 'true' || newarrival === true,
       assured: assured === 'true' || assured === true,
       variants
     });
@@ -260,7 +267,7 @@ router.put('/products/bulk', async (req, res) => {
     }
     
     // Whitelist allowed update fields for safety
-    const allowedFields = ['featured', 'category', 'categoryId', 'inStock', 'size', 'assured'];
+    const allowedFields = ['trending', 'bestseller', 'newarrival', 'category', 'categoryId', 'inStock', 'size', 'assured'];
     const updateData = {};
     
     Object.keys(update).forEach(key => {
@@ -343,7 +350,9 @@ router.put('/products/:id', async (req, res) => {
     const inStock = req.body.inStock;
     const size = sanitizeString(req.body.size);
     const minStock = req.body.minStock;
-    const featured = req.body.featured;
+    const trending = req.body.trending;
+    const bestseller = req.body.bestseller;
+    const newarrival = req.body.newarrival;
     const assured = req.body.assured;
     
     const updateData = {
@@ -354,7 +363,9 @@ router.put('/products/:id', async (req, res) => {
       inStock: Number(inStock),
       size: size || '',
       minStock: Number(minStock) || 5, // Default to 5 if not provided
-      featured: featured === 'true' || featured === true,
+      trending: trending === 'true' || trending === true,
+      bestseller: bestseller === 'true' || bestseller === true,
+      newarrival: newarrival === 'true' || newarrival === true,
       assured: assured === 'true' || assured === true
     };
     

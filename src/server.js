@@ -114,7 +114,7 @@ if (!process.env.MONGO_URI) {
 // Connect to MongoDB and start the server
 mongoose.connect(process.env.MONGO_URI)
   .then(() => {
-    console.log('✅ MongoDB connected successfully');
+    console.log(`✅ MongoDB connected successfully: ${process.env.MONGO_URI}`);
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📡 API available at http://localhost:${PORT}/api`);

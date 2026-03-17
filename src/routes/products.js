@@ -18,17 +18,34 @@ router.get('/', async (req, res) => {
 // Get trending products
 router.get('/trending', async (req, res) => {
   try {
-    const products = await Product.find({ featured: true }).limit(8).populate('categoryId', 'name slug');
+    const products = await Product.find({ trending: true }).limit(8).populate('categoryId', 'name slug');
     res.json({ products });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
+
+// Get bestseller products
+
+router.get('/bestseller', async (req, res) => {
+  try {
+    const products = await Product.find({ bestseller: true }).limit(8).populate('categoryId', 'name slug');
+    res.json({ products });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error', error: err.message });
+  }
+});
+
+
+
+
+
+
 // Get new arrivals
 router.get('/new-arrivals', async (req, res) => {
   try {
-    const products = await Product.find().sort({ createdAt: -1 }).limit(8).populate('categoryId', 'name slug');
+    const products = await Product.find({ newarrival: true }).sort({ createdAt: -1 }).limit(8).populate('categoryId', 'name slug');
     res.json({ products });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
