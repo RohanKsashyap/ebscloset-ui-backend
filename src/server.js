@@ -28,7 +28,7 @@ const PORT = process.env.PORT || 5000;
 app.use(express.json());
 const allowedOrigins = [
   process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
-  'https://ebscloset-ui.vercel.app',
+  'https://www.ebscloset.com.au',
 ].filter(Boolean);
 
 app.use(cors({
