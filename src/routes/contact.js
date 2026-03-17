@@ -15,9 +15,8 @@ router.post('/', async (req, res) => {
     if (!email || !emailRegex.test(email)) {
       return res.status(400).json({ message: 'Please enter a valid email address' });
     }
-    const allowedSubjects = ['general', 'order', 'product', 'wholesale', 'feedback', 'service'];
-    if (!subject || !allowedSubjects.includes(String(subject).toLowerCase())) {
-      return res.status(400).json({ message: 'Invalid subject' });
+    if (!subject || subject.trim().length < 2) {
+      return res.status(400).json({ message: 'Subject must be at least 2 characters' });
     }
     if (!message || message.trim().length < 10) {
       return res.status(400).json({ message: 'Message must be at least 10 characters' });

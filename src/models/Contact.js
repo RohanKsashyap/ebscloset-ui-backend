@@ -7,7 +7,6 @@ const contactSchema = new mongoose.Schema({
   subject: { 
     type: String, 
     required: true, 
-    enum: ['general', 'order', 'product', 'wholesale', 'feedback', 'service'],
     lowercase: true,
     trim: true
   },

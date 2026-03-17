@@ -742,6 +742,31 @@ router.put('/contacts/:id', async (req, res) => {
   }
 });
 
+router.delete('/contacts/bulk', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'No contact IDs provided' });
+    }
+    const result = await Contact.deleteMany({ _id: { $in: ids } });
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    res.status(500).json({ message: 'Error bulk deleting contacts' });
+  }
+});
+
+router.delete('/contacts/:id', async (req, res) => {
+  try {
+    const contact = await Contact.findByIdAndDelete(req.params.id);
+    if (!contact) {
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Error deleting contact' });
+  }
+});
+
 // Orders management
 router.get('/orders', async (req, res) => {
   const orders = await Order.find().sort({ createdAt: -1 });
