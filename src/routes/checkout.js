@@ -84,10 +84,12 @@ router.post('/cod', async (req, res) => {
     // Fire-and-forget order confirmation email (SendGrid/Twilio)
     try { await sendOrderConfirmation(order); } catch (_) {}
 
-    // Decrement stock for COD order
+    // Note: Stock decrement is now handled by admin on order approval
+    /*
     try { await decrementStock(products, order._id); } catch (err) {
       console.error('Inventory decrement failed for COD:', err);
     }
+    */
 
     // Store or update user information
     if (customer.email) {
@@ -258,10 +260,12 @@ router.post('/webhook', async (req, res) => {
       order.orderId = `AC-${order._id.toString().toUpperCase()}`;
       await order.save();
 
-      // Decrement stock for Stripe order
+      // Note: Stock decrement is now handled by admin on order approval
+      /*
       try { await decrementStock(products, order._id); } catch (err) {
         console.error('Inventory decrement failed for Stripe:', err);
       }
+      */
 
       // Fire-and-forget order confirmation email (SendGrid/Twilio)
       try { await sendOrderConfirmation(order); } catch (_) {}

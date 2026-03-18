@@ -12,7 +12,7 @@ const Navigation = require('../models/Navigation');
 const DiscountCode = require('../models/DiscountCode');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
-const { incrementStock } = require('../utils/inventory');
+const { incrementStock, decrementStock } = require('../utils/inventory');
 
 const router = Router();
 router.use(adminAuth);
@@ -798,6 +798,32 @@ router.put('/orders/:id', async (req, res) => {
     
     const oldStatus = String(order.status || '').toLowerCase();
 
+    const approvedStatuses = ['processing', 'shipped', 'delivered'];
+    const nonApprovedStatuses = ['pending', 'cancelled', 'returned'];
+
+    // Decouple stock management from sales record creation
+    const isBecomingApproved = approvedStatuses.includes(newStatus) && nonApprovedStatuses.includes(oldStatus);
+    const isBecomingUnapproved = nonApprovedStatuses.includes(newStatus) && approvedStatuses.includes(oldStatus);
+
+    // Handle stock decrement when order is approved
+    if (isBecomingApproved) {
+      try {
+        await decrementStock(order.products || [], order._id);
+      } catch (stockErr) {
+        console.error(`Error decrementing stock for approved order ${order._id}:`, stockErr);
+      }
+    }
+
+    // Handle stock increment when order is cancelled or returned after being approved
+    if (isBecomingUnapproved) {
+      const reason = newStatus === 'returned' ? 'order-returned' : 'order-cancelled';
+      try {
+        await incrementStock(order.products || [], order._id, reason);
+      } catch (stockErr) {
+        console.error(`Error incrementing stock for unapproved order ${order._id}:`, stockErr);
+      }
+    }
+
     // If status is changing to 'delivered', create a sale record
     if (newStatus === 'delivered' && oldStatus !== 'delivered') {
       // Check if a sale record already exists for this order to avoid duplicates
@@ -812,23 +838,8 @@ router.put('/orders/:id', async (req, res) => {
           saleDate: new Date()
         });
       }
-      // Note: Stock is now decremented at the time of order placement (checkout.js)
     } 
     
-    // If status is changing to 'returned' or 'cancelled', and it wasn't already in that state,
-    // we need to increment the stock back.
-    const isReturning = (newStatus === 'returned' && oldStatus !== 'returned');
-    const isCancelling = (newStatus === 'cancelled' && oldStatus !== 'cancelled');
-
-    if (isReturning || isCancelling) {
-      const reason = isReturning ? 'order-returned' : 'order-cancelled';
-      try {
-        await incrementStock(order.products || [], order._id, reason);
-      } catch (stockErr) {
-        console.error(`Error incrementing stock for order ${order._id}:`, stockErr);
-      }
-    }
-
     // Update the order status
     order.status = newStatus;
     
@@ -850,6 +861,20 @@ router.delete('/orders/bulk', async (req, res) => {
       return res.status(400).json({ message: 'No order IDs provided' });
     }
 
+    // Handle stock increment for orders being deleted that were in approved status
+    const approvedStatuses = ['processing', 'shipped', 'delivered'];
+    const ordersToProcess = await Order.find({ _id: { $in: ids } });
+    
+    for (const order of ordersToProcess) {
+      if (approvedStatuses.includes(String(order.status || '').toLowerCase())) {
+        try {
+          await incrementStock(order.products || [], order._id, 'order-deleted');
+        } catch (stockErr) {
+          console.error(`Error incrementing stock for bulk-deleted order ${order._id}:`, stockErr);
+        }
+      }
+    }
+
     // Delete orders
     const deleteResult = await Order.deleteMany({ _id: { $in: ids } });
     
@@ -861,6 +886,7 @@ router.delete('/orders/bulk', async (req, res) => {
       deletedCount: deleteResult.deletedCount 
     });
   } catch (err) {
+    console.error('Error bulk deleting orders:', err);
     res.status(500).json({ message: 'Error bulk deleting orders' });
   }
 });
@@ -868,16 +894,29 @@ router.delete('/orders/bulk', async (req, res) => {
 // Delete single order
 router.delete('/orders/:id', async (req, res) => {
   try {
-    const order = await Order.findByIdAndDelete(req.params.id);
+    const order = await Order.findById(req.params.id);
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
+
+    // Increment stock if the order was in an approved status
+    const approvedStatuses = ['processing', 'shipped', 'delivered'];
+    if (approvedStatuses.includes(String(order.status || '').toLowerCase())) {
+      try {
+        await incrementStock(order.products || [], order._id, 'order-deleted');
+      } catch (stockErr) {
+        console.error(`Error incrementing stock for deleted order ${order._id}:`, stockErr);
+      }
+    }
+    
+    await Order.findByIdAndDelete(req.params.id);
     
     // Also delete associated sale if it exists
     await Sale.deleteOne({ orderId: req.params.id });
     
     res.json({ success: true });
   } catch (err) {
+    console.error('Error deleting order:', err);
     res.status(500).json({ message: 'Error deleting order' });
   }
 });
