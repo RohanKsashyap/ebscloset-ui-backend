@@ -52,7 +52,16 @@ router.post('/cod', async (req, res) => {
         }
       }
       if (item.variantName) {
-        const variant = (productDoc.variants || []).find(v => v.name === item.variantName);
+        let variant = (productDoc.variants || []).find(v => v.name === item.variantName);
+        
+        // Fallback: Check the legacy 'stock' object if variants array is empty
+        if (!variant && productDoc.stock && productDoc.stock[item.variantName] !== undefined) {
+          variant = {
+            name: item.variantName,
+            inStock: Number(productDoc.stock[item.variantName]) || 0
+          };
+        }
+
         if (!variant) {
           return res.status(400).json({ message: `Variant not found for ${productDoc.name}: ${item.variantName}` });
         }

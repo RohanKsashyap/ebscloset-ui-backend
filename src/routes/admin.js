@@ -71,6 +71,8 @@ router.post('/products', async (req, res) => {
     const categoryId = sanitizeString(req.body.categoryId);
     const inStock = req.body.inStock;
     const size = sanitizeString(req.body.size);
+    const sizes = req.body.sizes || [];
+    const color = sanitizeString(req.body.color);
     const minStock = req.body.minStock;
     const trending = req.body.trending;
     const bestseller = req.body.bestseller;
@@ -243,6 +245,8 @@ router.post('/products', async (req, res) => {
       video3Id,
       inStock: Number(inStock),
       size: size || '',
+      sizes: Array.isArray(sizes) ? sizes : [sizes],
+      color: color || '',
       minStock: Number(minStock) || 5, // Default to 5 if not provided
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,
@@ -267,13 +271,15 @@ router.put('/products/bulk', async (req, res) => {
     }
     
     // Whitelist allowed update fields for safety
-    const allowedFields = ['trending', 'bestseller', 'newarrival', 'category', 'categoryId', 'inStock', 'size', 'assured'];
+    const allowedFields = ['trending', 'bestseller', 'newarrival', 'category', 'categoryId', 'inStock', 'size', 'sizes', 'color', 'assured'];
     const updateData = {};
     
     Object.keys(update).forEach(key => {
       if (allowedFields.includes(key)) {
-        if (['category', 'size'].includes(key)) {
+        if (['category', 'size', 'color'].includes(key)) {
           updateData[key] = sanitizeString(update[key]);
+        } else if (key === 'sizes') {
+          updateData[key] = Array.isArray(update[key]) ? update[key] : [update[key]];
         } else {
           updateData[key] = update[key];
         }
@@ -349,6 +355,8 @@ router.put('/products/:id', async (req, res) => {
     const categoryId = sanitizeString(req.body.categoryId);
     const inStock = req.body.inStock;
     const size = sanitizeString(req.body.size);
+    const sizes = req.body.sizes || [];
+    const color = sanitizeString(req.body.color);
     const minStock = req.body.minStock;
     const trending = req.body.trending;
     const bestseller = req.body.bestseller;
@@ -362,6 +370,8 @@ router.put('/products/:id', async (req, res) => {
       categoryId: categoryId || null,
       inStock: Number(inStock),
       size: size || '',
+      sizes: Array.isArray(sizes) ? sizes : [sizes],
+      color: color || '',
       minStock: Number(minStock) || 5, // Default to 5 if not provided
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,

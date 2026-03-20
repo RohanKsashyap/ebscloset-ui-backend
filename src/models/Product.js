@@ -26,7 +26,9 @@ const productSchema = new mongoose.Schema({
   video3Id: { type: String, default: '' },
 
   inStock: { type: Number, default: 0 },
-  size: { type: String, default: '' }, // Size information (e.g., S, M, L, XL)
+  size: { type: String, default: '' }, // Legacy size information
+  sizes: [{ type: String }], // Multiple size options (e.g., S, M, L, XL, 32, 34)
+  color: { type: String, default: '' }, // Color information
   minStock: { type: Number, default: 5 }, // Minimum stock threshold for "few left" indicator
   newarrival: { type: Boolean, default: false },
   trending: { type: Boolean, default: false },
