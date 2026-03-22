@@ -10,6 +10,7 @@ const Contact = require('../models/Contact');
 const SiteSetting = require('../models/SiteSetting');
 const Navigation = require('../models/Navigation');
 const DiscountCode = require('../models/DiscountCode');
+const Subscriber = require('../models/Subscriber');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
@@ -1216,6 +1217,25 @@ router.delete('/discounts/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ message: 'Error deleting discount' });
+  }
+});
+
+// Newsletter subscribers management
+router.get('/newsletter', async (req, res) => {
+  try {
+    const subscribers = await Subscriber.find().sort({ createdAt: -1 });
+    res.json(subscribers);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching subscribers' });
+  }
+});
+
+router.delete('/newsletter/:id', async (req, res) => {
+  try {
+    await Subscriber.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Subscriber removed' });
+  } catch (err) {
+    res.status(500).json({ message: 'Error deleting subscriber' });
   }
 });
 
