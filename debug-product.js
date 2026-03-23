@@ -7,9 +7,11 @@ async function debugProduct() {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('Connected to MongoDB');
     
-    const product = await Product.findOne({ name: /Sparkle Princess Dress/i });
+    const product = await Product.findOne({ name: /blue dion/i });
     if (!product) {
-      console.log('Product not found!');
+      console.log('Product not found! Trying with id...');
+      const all = await Product.find({}).limit(5);
+      console.log('Available products (sample):', all.map(p => p.name));
     } else {
       console.log('Full Product Document:');
       console.log(JSON.stringify(product, null, 2));

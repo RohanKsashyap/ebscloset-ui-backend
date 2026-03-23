@@ -26,14 +26,27 @@ const decrementStock = async (products, orderId) => {
       let newStock = 0;
 
       if (item.variantName) {
-        const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+        const lowerVariantName = item.variantName.toLowerCase();
+        let variantIndex = product.variants.findIndex(v => 
+          (v.name && v.name.toLowerCase() === lowerVariantName) || 
+          (v.size && v.size.toLowerCase() === lowerVariantName)
+        );
+        
         if (variantIndex !== -1) {
           previousStock = product.variants[variantIndex].inStock || 0;
           product.variants[variantIndex].inStock = Math.max(0, previousStock - qty);
           newStock = product.variants[variantIndex].inStock;
         } else {
-          console.error(`Inventory Error: Variant not found for ${product.name}: ${item.variantName}`);
-          continue;
+          // Fallback to top-level stock if variant is in 'sizes' array or if no variants are defined
+          const isInSizesArray = (product.sizes || []).some(s => s.toLowerCase() === lowerVariantName);
+          if (isInSizesArray || !product.variants || product.variants.length === 0) {
+            previousStock = product.inStock || 0;
+            product.inStock = Math.max(0, previousStock - qty);
+            newStock = product.inStock;
+          } else {
+            console.error(`Inventory Error: Variant not found for ${product.name}: ${item.variantName}`);
+            continue;
+          }
         }
       } else {
         previousStock = product.inStock || 0;
@@ -86,14 +99,27 @@ const incrementStock = async (products, orderId, reason = 'order-returned') => {
       let newStock = 0;
 
       if (item.variantName) {
-        const variantIndex = product.variants.findIndex(v => v.name === item.variantName);
+        const lowerVariantName = item.variantName.toLowerCase();
+        let variantIndex = product.variants.findIndex(v => 
+          (v.name && v.name.toLowerCase() === lowerVariantName) || 
+          (v.size && v.size.toLowerCase() === lowerVariantName)
+        );
+        
         if (variantIndex !== -1) {
           previousStock = product.variants[variantIndex].inStock || 0;
           product.variants[variantIndex].inStock = previousStock + qty;
           newStock = product.variants[variantIndex].inStock;
         } else {
-          console.error(`Inventory Error: Variant not found for ${product.name}: ${item.variantName}`);
-          continue;
+          // Fallback to top-level stock if variant is in 'sizes' array or if no variants are defined
+          const isInSizesArray = (product.sizes || []).some(s => s.toLowerCase() === lowerVariantName);
+          if (isInSizesArray || !product.variants || product.variants.length === 0) {
+            previousStock = product.inStock || 0;
+            product.inStock = previousStock + qty;
+            newStock = product.inStock;
+          } else {
+            console.error(`Inventory Error: Variant not found for ${product.name}: ${item.variantName}`);
+            continue;
+          }
         }
       } else {
         previousStock = product.inStock || 0;

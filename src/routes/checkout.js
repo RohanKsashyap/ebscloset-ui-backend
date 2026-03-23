@@ -58,7 +58,11 @@ router.post('/cod', async (req, res) => {
         }
       }
       if (item.variantName) {
-        let variant = (productDoc.variants || []).find(v => v.name === item.variantName);
+        const lowerVariantName = item.variantName.toLowerCase();
+        let variant = (productDoc.variants || []).find(v => 
+          (v.name && v.name.toLowerCase() === lowerVariantName) || 
+          (v.size && v.size.toLowerCase() === lowerVariantName)
+        );
         
         // Fallback: Check the legacy 'stock' object if variants array is empty
         if (!variant && productDoc.stock && productDoc.stock[item.variantName] !== undefined) {
@@ -66,6 +70,19 @@ router.post('/cod', async (req, res) => {
             name: item.variantName,
             inStock: Number(productDoc.stock[item.variantName]) || 0
           };
+        }
+
+        // Final fallback: Use top-level inStock if no variants array is present or if it's empty
+        // OR if the variantName is in the 'sizes' array but not explicitly in 'variants'
+        if (!variant) {
+          const isInSizesArray = (productDoc.sizes || []).some(s => s.toLowerCase() === lowerVariantName);
+          if (isInSizesArray || !productDoc.variants || productDoc.variants.length === 0) {
+            // If it's in the sizes array, treat it as a valid variant using top-level stock
+            variant = {
+              name: item.variantName,
+              inStock: productDoc.inStock ?? 0
+            };
+          }
         }
 
         if (!variant) {
