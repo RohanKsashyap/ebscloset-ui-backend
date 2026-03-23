@@ -14,6 +14,12 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 router.post('/cod', async (req, res) => {
   try {
     const { cart, customer, shippingFee } = req.body;
+    console.log('COD Request Body:', JSON.stringify(req.body, null, 2));
+
+    if (!cart || !Array.isArray(cart) || cart.length === 0) {
+      return res.status(400).json({ message: 'Cart is empty or invalid' });
+    }
+
     const products = cart.map(item => ({
       productId: item.productId, // Expect actual Mongo _id here
       title: item.title,
@@ -105,6 +111,16 @@ router.post('/cod', async (req, res) => {
       // Check if user exists
       let user = await User.findOne({ email: customer.email });
       
+      const addressData = {
+        fullName: customer.fullName,
+        phone: customer.phone,
+        address: customer.address,
+        city: customer.city,
+        postalCode: customer.postalCode,
+        country: customer.country,
+        isPrimary: true
+      };
+
       if (user) {
         // Update existing user with latest information if not an admin
         if (user.role !== 'admin') {
@@ -114,6 +130,12 @@ router.post('/cod', async (req, res) => {
           user.city = customer.city;
           user.postalCode = customer.postalCode;
           user.country = customer.country;
+          
+          // Add address to addresses array if not already present
+          const addressExists = user.addresses.some(a => a.address === customer.address && a.city === customer.city);
+          if (!addressExists) {
+            user.addresses.push(addressData);
+          }
         }
         user.orders.push(order._id);
         await user.save();
@@ -128,7 +150,9 @@ router.post('/cod', async (req, res) => {
           postalCode: customer.postalCode,
           country: customer.country,
           role: 'user',
-          orders: [order._id]
+          orders: [order._id],
+          addresses: [addressData],
+          password: Math.random().toString(36).slice(-8) // Random password for guest
         });
         await user.save();
       }
@@ -137,7 +161,7 @@ router.post('/cod', async (req, res) => {
     res.status(201).json({ orderId: order._id });
   } catch (err) {
     console.error('Error creating order:', err);
-    res.status(500).json({ message: 'Error creating order' });
+    res.status(500).json({ message: 'Error creating order', error: err.message });
   }
 });
 

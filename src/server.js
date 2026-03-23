@@ -26,7 +26,6 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middleware
-app.use(express.json());
 const allowedOrigins = [
   process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   'https://www.ebscloset.com.au',
@@ -36,6 +35,9 @@ app.use(cors({
   origin: allowedOrigins,
   credentials: true 
 }));
+
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Security and compression
 try {
@@ -80,7 +82,11 @@ app.use('/api/newsletter', newsletterRoutes);
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
-  res.status(500).json({ message: 'Internal server error', error: err.message });
+  const status = err.status || 500;
+  res.status(status).json({ 
+    message: status === 500 ? 'Internal server error' : err.message, 
+    error: err.message 
+  });
 });
 
 // Static file caching for frontend build (if served by backend)
