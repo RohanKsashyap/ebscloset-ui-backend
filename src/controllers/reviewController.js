@@ -50,26 +50,54 @@ exports.verifyEligibility = async (req, res) => {
 // Submit review
 exports.submitReview = async (req, res) => {
   try {
-    const { orderId, contact, productId, rating, reviewText, headline, customerName } = req.body;
+    const { orderId, contact, productId, rating, headline } = req.body;
+    
+    // Support both frontend and backend naming conventions
+    const customerName = req.body.customerName || req.body.name || 'Guest';
+    const reviewText = req.body.reviewText || req.body.comment;
+
+    if (!reviewText) {
+      return res.status(400).json({ message: 'Review text is required' });
+    }
 
     let isVerifiedPurchase = false;
-    let customerEmail = req.body.email || 'guest@ebscloset.com';
+    let customerEmail = req.body.email || req.body.customerEmail;
 
-    // If orderId is provided, verify eligibility (Verified Purchase)
-    if (orderId && contact) {
-      const order = await Order.findById(orderId);
-      if (order && (order.customer.email === contact || order.customer.phone === contact) && order.status === 'delivered') {
-        const productInOrder = order.products.some(p => p.productId === productId);
-        if (productInOrder) {
-          isVerifiedPurchase = true;
-          customerEmail = order.customer.email;
-          
-          const existingReview = await Review.findOne({ orderId, productId });
-          if (existingReview) {
-            return res.status(400).json({ message: 'Duplicate review' });
-          }
-        }
-      }
+    if (!orderId || !contact) {
+      return res.status(403).json({ message: 'Order ID and Contact info (Email/Phone) are required to verify your purchase.' });
+    }
+
+    // Verify eligibility (Strictly Verified Purchase)
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found. Please check your Order ID.' });
+    }
+
+    // Check if order matches contact (Email or Phone)
+    const contactMatches = order.customer.email === contact || order.customer.phone === contact;
+    if (!contactMatches) {
+      return res.status(403).json({ message: 'Contact information does not match this order.' });
+    }
+
+    // Check delivery status
+    if (order.status !== 'delivered') {
+      return res.status(403).json({ message: 'You can only review products from delivered orders.' });
+    }
+
+    // Check if product was in this order
+    const productInOrder = order.products.some(p => p.productId === productId);
+    if (!productInOrder) {
+      return res.status(403).json({ message: 'This product was not found in the specified order.' });
+    }
+
+    // Success - Verified
+    isVerifiedPurchase = true;
+    customerEmail = order.customer.email;
+    
+    // Prevent duplicate reviews for the same order+product
+    const existingReview = await Review.findOne({ orderId, productId });
+    if (existingReview) {
+      return res.status(400).json({ message: 'You have already reviewed this product for this order.' });
     }
 
     const images = [];
@@ -92,7 +120,7 @@ exports.submitReview = async (req, res) => {
     const review = await Review.create({
       productId,
       orderId: orderId || null,
-      customerName: customerName || 'Guest',
+      customerName,
       customerEmail,
       headline,
       rating,
