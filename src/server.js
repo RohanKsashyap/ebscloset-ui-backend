@@ -3,7 +3,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const path = require('path');
+const os = require('os');
 const mongoose = require('mongoose');
+const fileUpload = require('express-fileupload');
 
 // Load environment variables from backend .env explicitly
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
@@ -38,6 +40,13 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Global middleware for file uploads
+app.use(fileUpload({
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
+  useTempFiles: true,
+  tempFileDir: os.tmpdir()
+}));
 
 // Security and compression
 try {

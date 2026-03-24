@@ -1,16 +1,9 @@
 const { Router } = require('express');
-const fileUpload = require('express-fileupload');
+const os = require('os');
 const testimonialController = require('../controllers/testimonialController');
 const adminAuth = require('../middleware/adminAuth');
 
 const router = Router();
-
-// Middleware for file uploads
-router.use(fileUpload({
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
-  useTempFiles: true,
-  tempFileDir: '/tmp/'
-}));
 
 // Public routes
 router.get('/', testimonialController.getPublicTestimonials);

@@ -1,6 +1,5 @@
 const { Router } = require('express');
 const os = require('os');
-const fileUpload = require('express-fileupload');
 const Category = require('../models/Category');
 const GalleryImage = require('../models/GalleryImage');
 const Product = require('../models/Product');
@@ -9,13 +8,6 @@ const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const adminAuth = require('../middleware/adminAuth');
 
 const router = Router();
-
-// Middleware for file uploads (match product route behavior)
-router.use(fileUpload({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
-  useTempFiles: true,
-  tempFileDir: os.tmpdir()
-}));
 
 // Public routes
 

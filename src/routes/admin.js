@@ -1,6 +1,5 @@
 const { Router } = require('express');
 const os = require('os');
-const fileUpload = require('express-fileupload');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -34,13 +33,6 @@ const sanitizeString = (val) => {
 };
 
 
-// Middleware for file uploads
-router.use(fileUpload({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
-  useTempFiles: true,
-  tempFileDir: os.tmpdir()
-}));
-
 // Product CRUD
 router.get('/products', async (req, res) => {
   try {
@@ -68,6 +60,7 @@ router.post('/products', async (req, res) => {
   try {
     const name = sanitizeString(req.body.name);
     const price = req.body.price;
+    const originalPrice = req.body.originalPrice;
     const description = sanitizeString(req.body.description);
     const categoryId = sanitizeString(req.body.categoryId);
     const inStock = req.body.inStock;
@@ -226,6 +219,7 @@ router.post('/products', async (req, res) => {
     const product = await Product.create({
       name,
       price: Number(price),
+      originalPrice: originalPrice ? Number(originalPrice) : undefined,
       description,
       category: req.body.category || undefined, // legacy support if client still sends name
       categoryId: categoryId || null,
@@ -352,6 +346,7 @@ router.put('/products/:id', async (req, res) => {
 
     const name = sanitizeString(req.body.name);
     const price = req.body.price;
+    const originalPrice = req.body.originalPrice;
     const description = sanitizeString(req.body.description);
     const categoryId = sanitizeString(req.body.categoryId);
     const inStock = req.body.inStock;
@@ -367,6 +362,7 @@ router.put('/products/:id', async (req, res) => {
     const updateData = {
       name,
       price: Number(price),
+      originalPrice: originalPrice ? Number(originalPrice) : undefined,
       description,
       categoryId: categoryId || null,
       inStock: Number(inStock),
