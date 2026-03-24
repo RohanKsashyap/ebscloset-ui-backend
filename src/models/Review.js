@@ -11,7 +11,9 @@ const reviewSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   source: { type: String, enum: ['customer', 'admin'], default: 'customer' },
   ipAddress: { type: String },
-  isVerifiedPurchase: { type: Boolean, default: false }
+  isVerifiedPurchase: { type: Boolean, default: false },
+  images: [{ type: String }],
+  video: { type: String }
 }, { timestamps: true });
 
 // Prevent duplicate reviews for the same order and product

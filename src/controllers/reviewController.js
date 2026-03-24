@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Review = require('../models/Review');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
+const { uploadImage } = require('../utils/imageUpload');
 
 // Verify eligibility
 exports.verifyEligibility = async (req, res) => {
@@ -51,34 +52,57 @@ exports.submitReview = async (req, res) => {
   try {
     const { orderId, contact, productId, rating, reviewText, headline, customerName } = req.body;
 
-    // Re-verify eligibility (security)
-    const order = await Order.findById(orderId);
-    if (!order || (order.customer.email !== contact && order.customer.phone !== contact) || order.status !== 'delivered') {
-      return res.status(403).json({ message: 'Unauthorized review submission' });
+    let isVerifiedPurchase = false;
+    let customerEmail = req.body.email || 'guest@ebscloset.com';
+
+    // If orderId is provided, verify eligibility (Verified Purchase)
+    if (orderId && contact) {
+      const order = await Order.findById(orderId);
+      if (order && (order.customer.email === contact || order.customer.phone === contact) && order.status === 'delivered') {
+        const productInOrder = order.products.some(p => p.productId === productId);
+        if (productInOrder) {
+          isVerifiedPurchase = true;
+          customerEmail = order.customer.email;
+          
+          const existingReview = await Review.findOne({ orderId, productId });
+          if (existingReview) {
+            return res.status(400).json({ message: 'Duplicate review' });
+          }
+        }
+      }
     }
 
-    const productInOrder = order.products.some(p => p.productId === productId);
-    if (!productInOrder) {
-      return res.status(403).json({ message: 'Product not found in this order' });
+    const images = [];
+    if (req.files) {
+      if (req.files.images) {
+        const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+        for (const file of imageFiles) {
+          const result = await uploadImage(file, 'ebs-closet/reviews');
+          images.push(result.url);
+        }
+      }
     }
 
-    const existingReview = await Review.findOne({ orderId, productId });
-    if (existingReview) {
-      return res.status(400).json({ message: 'Duplicate review' });
+    let videoUrl = '';
+    if (req.files && req.files.video) {
+      const result = await uploadImage(req.files.video, 'ebs-closet/reviews');
+      videoUrl = result.url;
     }
 
     const review = await Review.create({
       productId,
-      orderId,
-      customerName: customerName || order.customer.fullName,
-      customerEmail: order.customer.email,
+      orderId: orderId || null,
+      customerName: customerName || 'Guest',
+      customerEmail,
       headline,
       rating,
       reviewText,
       status: 'pending',
       source: 'customer',
       ipAddress: req.ip,
-      isVerifiedPurchase: true
+      isVerifiedPurchase,
+      images,
+      video: videoUrl
     });
 
     res.status(201).json({ message: 'Review submitted for approval', review });
@@ -142,16 +166,35 @@ exports.addAdminReview = async (req, res) => {
   try {
     const { productId, customerName, customerEmail, headline, rating, reviewText } = req.body;
     
+    const images = [];
+    if (req.files) {
+      if (req.files.images) {
+        const imageFiles = Array.isArray(req.files.images) ? req.files.images : [req.files.images];
+        for (const file of imageFiles) {
+          const result = await uploadImage(file, 'ebs-closet/reviews');
+          images.push(result.url);
+        }
+      }
+    }
+
+    let videoUrl = '';
+    if (req.files && req.files.video) {
+      const result = await uploadImage(req.files.video, 'ebs-closet/reviews');
+      videoUrl = result.url;
+    }
+
     const review = await Review.create({
       productId,
       customerName,
-      customerEmail,
+      customerEmail: customerEmail || 'admin-added@ebscloset.com',
       headline,
       rating,
       reviewText,
       status: 'approved',
       source: 'admin',
-      isVerifiedPurchase: false // Can be true if admin verified manually, but default false
+      isVerifiedPurchase: false,
+      images,
+      video: videoUrl
     });
     
     res.status(201).json(review);

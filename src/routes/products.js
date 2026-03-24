@@ -55,18 +55,40 @@ router.get('/new-arrivals', async (req, res) => {
 // Get a product by ID
 router.get('/:id', async (req, res) => {
   try {
-    // Check if ID is a valid MongoDB ObjectId
     const mongoose = require('mongoose');
+    const Review = require('../models/Review');
     let product;
+    
     if (mongoose.Types.ObjectId.isValid(req.params.id)) {
       product = await Product.findById(req.params.id).populate('categoryId', 'name slug');
     } else {
-      // Fallback for numeric IDs if they are stored in a specific field or if we want to handle them gracefully
       product = await Product.findOne({ id: req.params.id }).populate('categoryId', 'name slug');
     }
 
     if (!product) return res.status(404).json({ message: 'Product not found' });
-    res.json({ product });
+
+    // Fetch approved reviews for this product
+    const reviews = await Review.find({ 
+      productId: product._id, 
+      status: 'approved' 
+    }).sort({ createdAt: -1 });
+
+    // Map reviews to match frontend expectations if necessary
+    const formattedReviews = reviews.map(r => ({
+      _id: r._id,
+      name: r.customerName,
+      rating: r.rating,
+      comment: r.reviewText,
+      headline: r.headline,
+      date: r.createdAt.toISOString().slice(0, 10),
+      images: r.images,
+      video: r.video
+    }));
+
+    const productObj = product.toObject();
+    productObj.reviews = formattedReviews;
+
+    res.json({ product: productObj });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
   }
