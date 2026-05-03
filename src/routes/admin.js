@@ -1120,12 +1120,28 @@ router.post('/site-settings', async (req, res) => {
   try {
     let settings = await SiteSetting.findOne();
     if (settings) {
-      settings = await SiteSetting.findByIdAndUpdate(settings._id, req.body, { new: true });
+      // Use Object.assign to update fields
+      Object.assign(settings, req.body);
+      
+      // Explicitly mark objects and arrays as modified for Mongoose
+      if (req.body.hero) settings.markModified('hero');
+      if (req.body.editorial) settings.markModified('editorial');
+      if (req.body.collections) settings.markModified('collections');
+      if (req.body.footerGroups) settings.markModified('footerGroups');
+      if (req.body.social) settings.markModified('social');
+      if (req.body.newsletter) settings.markModified('newsletter');
+      if (req.body.legalLabels) settings.markModified('legalLabels');
+      if (req.body.infoPages) settings.markModified('infoPages');
+      if (req.body.budgets) settings.markModified('budgets');
+      if (req.body.announcement) settings.markModified('announcement');
+      
+      await settings.save();
     } else {
       settings = await SiteSetting.create(req.body);
     }
     res.json({ data: settings });
   } catch (err) {
+    console.error('Error updating site settings:', err);
     res.status(500).json({ message: 'Error updating site settings' });
   }
 });
