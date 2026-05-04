@@ -10,6 +10,7 @@ const SiteSetting = require('../models/SiteSetting');
 const Navigation = require('../models/Navigation');
 const DiscountCode = require('../models/DiscountCode');
 const Subscriber = require('../models/Subscriber');
+const Category = require('../models/Category');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
@@ -721,6 +722,125 @@ router.delete('/products/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting product:', err);
     res.status(500).json({ message: 'Error deleting product' });
+  }
+});
+
+// Category CRUD
+router.get('/categories', async (req, res) => {
+  try {
+    const categories = await Category.find().sort({ displayOrder: 1, name: 1 });
+    res.json(categories);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching categories' });
+  }
+});
+
+router.post('/categories', async (req, res) => {
+  try {
+    const { name, description, slug, isActive, displayOrder } = req.body;
+    
+    let imageUrl = '';
+    let imageId = '';
+    let thumbnailUrl = '';
+
+    const imageFile = getFirstFile(req.files?.image);
+    if (imageFile) {
+      try {
+        const uploadResponse = await uploadImage(imageFile, 'ebs-closet/categories', 'category');
+        imageUrl = uploadResponse.url;
+        imageId = uploadResponse.fileId;
+        thumbnailUrl = uploadResponse.thumbnailUrl;
+      } catch (uploadError) {
+        console.error('Category image upload failed:', uploadError);
+      }
+    }
+
+    const category = await Category.create({
+      name,
+      description,
+      slug: slug || name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, ''),
+      isActive: isActive !== undefined ? isActive : true,
+      displayOrder: Number(displayOrder) || 0,
+      imageUrl,
+      imageId,
+      thumbnailUrl
+    });
+
+    res.json(category);
+  } catch (err) {
+    console.error('Error creating category:', err);
+    res.status(500).json({ message: 'Error creating category', error: err.message });
+  }
+});
+
+router.put('/categories/:id', async (req, res) => {
+  try {
+    const { name, description, slug, isActive, displayOrder } = req.body;
+    const category = await Category.findById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    let imageUrl = category.imageUrl;
+    let imageId = category.imageId;
+    let thumbnailUrl = category.thumbnailUrl;
+
+    const imageFile = getFirstFile(req.files?.image);
+    if (imageFile) {
+      if (category.imageId) {
+        try {
+          await deleteImage(category.imageId);
+        } catch (err) {
+          console.error('Failed to delete old category image:', err);
+        }
+      }
+      try {
+        const uploadResponse = await uploadImage(imageFile, 'ebs-closet/categories', 'category');
+        imageUrl = uploadResponse.url;
+        imageId = uploadResponse.fileId;
+        thumbnailUrl = uploadResponse.thumbnailUrl;
+      } catch (uploadError) {
+        console.error('Category image upload failed:', uploadError);
+      }
+    }
+
+    category.name = name || category.name;
+    category.description = description !== undefined ? description : category.description;
+    category.slug = slug || category.slug;
+    category.isActive = isActive !== undefined ? isActive : category.isActive;
+    category.displayOrder = displayOrder !== undefined ? Number(displayOrder) : category.displayOrder;
+    category.imageUrl = imageUrl;
+    category.imageId = imageId;
+    category.thumbnailUrl = thumbnailUrl;
+
+    await category.save();
+    res.json(category);
+  } catch (err) {
+    console.error('Error updating category:', err);
+    res.status(500).json({ message: 'Error updating category' });
+  }
+});
+
+router.delete('/categories/:id', async (req, res) => {
+  try {
+    const category = await Category.findById(req.params.id);
+    if (!category) {
+      return res.status(404).json({ message: 'Category not found' });
+    }
+
+    if (category.imageId) {
+      try {
+        await deleteImage(category.imageId);
+      } catch (err) {
+        console.error('Failed to delete category image:', err);
+      }
+    }
+
+    await Category.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error deleting category:', err);
+    res.status(500).json({ message: 'Error deleting category' });
   }
 });
 

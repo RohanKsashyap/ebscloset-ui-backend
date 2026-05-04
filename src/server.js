@@ -11,6 +11,7 @@ const fileUpload = require('express-fileupload');
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const productRoutes = require('./routes/products');
+const categoryRoutes = require('./routes/categories');
 const checkoutRoutes = require('./routes/checkout');
 const adminRoutes = require('./routes/admin');
 const authRoutes = require('./routes/auth');
@@ -76,6 +77,7 @@ app.get('/api/health', (req, res) => {
 
 // Routes
 app.use('/api/products', productRoutes);
+app.use('/api/categories', categoryRoutes);
 app.use('/api/checkout', checkoutRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/auth', authRoutes);
