@@ -73,6 +73,7 @@ router.post('/products', async (req, res) => {
     const bestseller = req.body.bestseller;
     const newarrival = req.body.newarrival;
     const assured = req.body.assured;
+    const ageGroups = req.body.ageGroups || [];
     
     let imageUrl = '';
     let imageId = '';
@@ -248,6 +249,7 @@ router.post('/products', async (req, res) => {
       bestseller: bestseller === 'true' || bestseller === true,
       newarrival: newarrival === 'true' || newarrival === true,
       assured: assured === 'true' || assured === true,
+      ageGroups: Array.isArray(ageGroups) ? ageGroups : [ageGroups],
       variants
     });
     
@@ -267,14 +269,14 @@ router.put('/products/bulk', async (req, res) => {
     }
     
     // Whitelist allowed update fields for safety
-    const allowedFields = ['trending', 'bestseller', 'newarrival', 'category', 'categoryId', 'inStock', 'size', 'sizes', 'color', 'assured'];
+    const allowedFields = ['trending', 'bestseller', 'newarrival', 'category', 'categoryId', 'inStock', 'size', 'sizes', 'color', 'assured', 'ageGroups'];
     const updateData = {};
     
     Object.keys(update).forEach(key => {
       if (allowedFields.includes(key)) {
         if (['category', 'size', 'color'].includes(key)) {
           updateData[key] = sanitizeString(update[key]);
-        } else if (key === 'sizes') {
+        } else if (key === 'sizes' || key === 'ageGroups') {
           updateData[key] = Array.isArray(update[key]) ? update[key] : [update[key]];
         } else {
           updateData[key] = update[key];
@@ -359,6 +361,7 @@ router.put('/products/:id', async (req, res) => {
     const bestseller = req.body.bestseller;
     const newarrival = req.body.newarrival;
     const assured = req.body.assured;
+    const ageGroups = req.body.ageGroups || [];
     
     const updateData = {
       name,
@@ -374,7 +377,8 @@ router.put('/products/:id', async (req, res) => {
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,
       newarrival: newarrival === 'true' || newarrival === true,
-      assured: assured === 'true' || assured === true
+      assured: assured === 'true' || assured === true,
+      ageGroups: Array.isArray(ageGroups) ? ageGroups : [ageGroups]
     };
     
     // Parse variants if provided

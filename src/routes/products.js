@@ -8,7 +8,18 @@ const router = Router();
 // Get all products
 router.get('/', async (req, res) => {
   try {
-    const products = await Product.find().populate('categoryId', 'name slug');
+    const { category, age } = req.query;
+    const filter = {};
+    
+    if (category) {
+      filter.category = category;
+    }
+    
+    if (age) {
+      filter.ageGroups = age;
+    }
+    
+    const products = await Product.find(filter).populate('categoryId', 'name slug');
     res.json({ products });
   } catch (err) {
     res.status(500).json({ message: 'Server error', error: err.message });
