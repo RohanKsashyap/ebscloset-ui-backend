@@ -63,17 +63,24 @@ router.get('/new-arrivals', async (req, res) => {
   }
 });
 
-// Get a product by ID
-router.get('/:id', async (req, res) => {
+// Get a product by ID or Slug
+router.get('/:idOrSlug', async (req, res) => {
   try {
     const mongoose = require('mongoose');
     const Review = require('../models/Review');
+    const { idOrSlug } = req.params;
     let product;
     
-    if (mongoose.Types.ObjectId.isValid(req.params.id)) {
-      product = await Product.findById(req.params.id).populate('categoryId', 'name slug');
+    if (mongoose.Types.ObjectId.isValid(idOrSlug)) {
+      product = await Product.findById(idOrSlug).populate('categoryId', 'name slug');
     } else {
-      product = await Product.findOne({ id: req.params.id }).populate('categoryId', 'name slug');
+      // Try finding by legacy numeric id (if it's a number) or slug
+      const isNumeric = !isNaN(idOrSlug) && !isNaN(parseFloat(idOrSlug));
+      const query = isNumeric 
+        ? { $or: [{ id: Number(idOrSlug) }, { slug: idOrSlug }] }
+        : { slug: idOrSlug };
+        
+      product = await Product.findOne(query).populate('categoryId', 'name slug');
     }
 
     if (!product) return res.status(404).json({ message: 'Product not found' });

@@ -15,9 +15,21 @@ const AgeCategory = require('../models/AgeCategory');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
+const crypto = require('crypto');
 
 const router = Router();
 router.use(adminAuth);
+
+// Helper to generate slug
+const generateSlug = (name) => {
+  const baseSlug = name.toLowerCase()
+    .replace(/ /g, '-')
+    .replace(/[^\w-]+/g, '')
+    .replace(/--+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const random = crypto.randomBytes(3).toString('hex');
+  return `${baseSlug}-${random}`;
+};
 
 // Helper to sanitize potential array/object inputs from multipart forms
 const sanitizeString = (val) => {
@@ -221,6 +233,7 @@ router.post('/products', async (req, res) => {
     
     const product = await Product.create({
       name,
+      slug: generateSlug(name),
       price: Number(price),
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
       description,
@@ -348,6 +361,11 @@ router.put('/products/:id', async (req, res) => {
     console.log('req.body keys:', Object.keys(req.body));
     if (req.files) console.log('req.files keys:', Object.keys(req.files));
 
+    const existingProduct = await Product.findById(req.params.id);
+    if (!existingProduct) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
     const name = sanitizeString(req.body.name);
     const price = req.body.price;
     const originalPrice = req.body.originalPrice;
@@ -381,6 +399,14 @@ router.put('/products/:id', async (req, res) => {
       assured: assured === 'true' || assured === true,
       ageGroups: Array.isArray(ageGroups) ? ageGroups : [ageGroups]
     };
+
+    // Update slug if name changed
+    if (name && name !== existingProduct.name) {
+      updateData.slug = generateSlug(name);
+    } else if (!existingProduct.slug) {
+      // Ensure existing products get a slug if they don't have one
+      updateData.slug = generateSlug(existingProduct.name);
+    }
     
     // Parse variants if provided
     if (req.body.variants && typeof req.body.variants === 'string' && req.body.variants.trim() !== '') {

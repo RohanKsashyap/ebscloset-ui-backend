@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const productSchema = new mongoose.Schema({
   id: { type: Number, unique: true, sparse: true }, // Legacy numeric ID support
   name: { type: String, required: true },
+  slug: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
   price: { type: Number, required: true },
   originalPrice: { type: Number },
   description: { type: String, default: '' },
