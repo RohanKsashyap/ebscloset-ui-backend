@@ -11,6 +11,7 @@ const Navigation = require('../models/Navigation');
 const DiscountCode = require('../models/DiscountCode');
 const Subscriber = require('../models/Subscriber');
 const Category = require('../models/Category');
+const AgeCategory = require('../models/AgeCategory');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
