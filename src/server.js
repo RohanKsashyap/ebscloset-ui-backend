@@ -34,6 +34,7 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   process.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   'https://www.ebscloset.com.au',
+  'https://ebscloset-ui.vercel.app',
 ].filter(Boolean);
 
 app.use(cors({
