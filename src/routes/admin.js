@@ -1267,33 +1267,57 @@ router.get('/site-settings', async (req, res) => {
   }
 });
 
+router.post('/upload-asset', async (req, res) => {
+  try {
+    const file = getFirstFile(req.files?.file);
+    if (!file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    const folder = req.body.folder || 'ebs-closet/site';
+    const uploadResponse = await uploadImage(file, folder, 'asset');
+    
+    res.json({
+      url: uploadResponse.url,
+      fileId: uploadResponse.fileId,
+      thumbnailUrl: uploadResponse.thumbnailUrl
+    });
+  } catch (err) {
+    console.error('Asset upload error:', err);
+    res.status(500).json({ message: 'Error uploading asset', error: err.message });
+  }
+});
+
 router.post('/site-settings', async (req, res) => {
   try {
-    let settings = await SiteSetting.findOne();
-    if (settings) {
-      // Use Object.assign to update fields
-      Object.assign(settings, req.body);
-      
-      // Explicitly mark objects and arrays as modified for Mongoose
-      if (req.body.hero) settings.markModified('hero');
-      if (req.body.editorial) settings.markModified('editorial');
-      if (req.body.collections) settings.markModified('collections');
-      if (req.body.footerGroups) settings.markModified('footerGroups');
-      if (req.body.social) settings.markModified('social');
-      if (req.body.newsletter) settings.markModified('newsletter');
-      if (req.body.legalLabels) settings.markModified('legalLabels');
-      if (req.body.infoPages) settings.markModified('infoPages');
-      if (req.body.budgets) settings.markModified('budgets');
-      if (req.body.announcement) settings.markModified('announcement');
-      
-      await settings.save();
-    } else {
-      settings = await SiteSetting.create(req.body);
-    }
+    const updateData = { ...req.body };
+    
+    // Remove protected fields
+    delete updateData._id;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+    delete updateData.__v;
+
+    // Use findOneAndUpdate with upsert: true for a cleaner update
+    const settings = await SiteSetting.findOneAndUpdate(
+      {}, // empty filter matches the first document
+      { $set: updateData },
+      { 
+        new: true, 
+        upsert: true, 
+        runValidators: true,
+        setDefaultsOnInsert: true
+      }
+    );
+
     res.json({ data: settings });
   } catch (err) {
     console.error('Error updating site settings:', err);
-    res.status(500).json({ message: 'Error updating site settings' });
+    res.status(500).json({ 
+      message: 'Error updating site settings', 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+    });
   }
 });
 
