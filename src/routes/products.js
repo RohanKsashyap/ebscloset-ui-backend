@@ -8,11 +8,15 @@ const router = Router();
 // Get all products
 router.get('/', async (req, res) => {
   try {
-    const { category, age } = req.query;
+    const { category, age, categoryId } = req.query;
     const filter = {};
     
     if (category) {
       filter.category = category;
+    }
+
+    if (categoryId) {
+      filter.categoryId = categoryId;
     }
     
     if (age) {
