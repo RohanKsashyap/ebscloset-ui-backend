@@ -107,6 +107,54 @@ async function uploadImage(file, folder = 'ebs-closet/products', prefix = '') {
 }
 
 /**
+ * Upload an image to ImageKit from a URL
+ * @param {string} url - The image URL
+ * @param {string} folder - The folder path
+ * @param {string} prefix - Filename prefix
+ * @returns {Promise<Object>} - Upload response
+ */
+async function uploadImageFromUrl(url, folder = 'ebs-closet/site', prefix = 'asset') {
+  try {
+    if (!url) {
+      throw new Error('No URL provided');
+    }
+
+    const timestamp = Date.now();
+    const fileName = `${prefix}_${timestamp}`;
+
+    console.log('Uploading image from URL:', { url, folder, fileName });
+
+    const uploadResponse = await imagekit.upload({
+      file: url,
+      fileName: fileName,
+      folder: folder,
+      useUniqueFileName: true,
+      tags: ['ebs-closet', folder.split('/').pop(), 'from-url'],
+      responseFields: ['fileId', 'url', 'thumbnailUrl', 'name', 'size', 'height', 'width']
+    });
+
+    const urlObj = new URL(uploadResponse.url);
+    const fullPath = urlObj.pathname;
+    const pathParts = fullPath.split('/').filter(part => part !== '');
+    const relativePath = '/' + pathParts.slice(1).join('/');
+
+    return {
+      url: uploadResponse.url,
+      fileId: uploadResponse.fileId,
+      path: relativePath,
+      thumbnailUrl: uploadResponse.thumbnailUrl,
+      name: uploadResponse.name,
+      size: uploadResponse.size,
+      height: uploadResponse.height,
+      width: uploadResponse.width
+    };
+  } catch (error) {
+    console.error('ImageKit URL upload error:', error);
+    throw new Error(`Failed to upload image from URL: ${error.message}`);
+  }
+}
+
+/**
  * Delete an image from ImageKit
  * @param {string} fileId - The ImageKit file ID
  * @returns {Promise<boolean>} - True if deletion was successful
@@ -149,6 +197,7 @@ function generateImageUrl(fileName, folder = 'ebs-closet/products') {
 
 module.exports = {
   uploadImage,
+  uploadImageFromUrl,
   deleteImage,
   generateImageUrl
 };

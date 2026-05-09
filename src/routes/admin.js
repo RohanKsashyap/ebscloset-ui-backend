@@ -13,7 +13,7 @@ const Subscriber = require('../models/Subscriber');
 const Category = require('../models/Category');
 const AgeCategory = require('../models/AgeCategory');
 const adminAuth = require('../middleware/adminAuth');
-const { uploadImage, deleteImage } = require('../utils/imageUpload');
+const { uploadImage, uploadImageFromUrl, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
 const { sendOrderConfirmation } = require('../utils/email');
 const crypto = require('crypto');
@@ -1278,12 +1278,18 @@ router.get('/site-settings', async (req, res) => {
 router.post('/upload-asset', async (req, res) => {
   try {
     const file = getFirstFile(req.files?.file);
-    if (!file) {
-      return res.status(400).json({ message: 'No file uploaded' });
-    }
-
+    const imageUrl = req.body.url;
     const folder = req.body.folder || 'ebs-closet/site';
-    const uploadResponse = await uploadImage(file, folder, 'asset');
+
+    let uploadResponse;
+
+    if (file) {
+      uploadResponse = await uploadImage(file, folder, 'asset');
+    } else if (imageUrl) {
+      uploadResponse = await uploadImageFromUrl(imageUrl, folder, 'asset');
+    } else {
+      return res.status(400).json({ message: 'No file or URL provided' });
+    }
     
     res.json({
       url: uploadResponse.url,
