@@ -298,10 +298,16 @@ router.post('/webhook', async (req, res) => {
       }));
       
       // Create order in database
+      const subtotal = products.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const totalAmount = session.amount_total / 100;
+      const shippingFee = Math.max(0, totalAmount - subtotal);
+
       const order = new Order({
         products,
         customer,
-        totalAmount: session.amount_total / 100, // Convert cents to dollars
+        subtotal,
+        shippingFee,
+        totalAmount,
         paymentMethod: 'Stripe',
         status: 'processing'
       });

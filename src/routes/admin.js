@@ -15,6 +15,7 @@ const AgeCategory = require('../models/AgeCategory');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
+const { sendOrderConfirmation } = require('../utils/email');
 const crypto = require('crypto');
 
 const router = Router();
@@ -1002,6 +1003,13 @@ router.put('/orders/:id', async (req, res) => {
     order.status = newStatus;
     
     await order.save();
+
+    // Notify customer of status change
+    try {
+      await sendOrderConfirmation(order);
+    } catch (emailErr) {
+      console.error(`Failed to send status update email for order ${order._id}:`, emailErr);
+    }
     
     res.json(order);
   } catch (err) {
