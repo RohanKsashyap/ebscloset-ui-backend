@@ -795,9 +795,30 @@ router.delete('/products/:id', async (req, res) => {
 // Category CRUD
 router.get('/categories', async (req, res) => {
   try {
-    const categories = await Category.find().sort({ displayOrder: 1, name: 1 });
+    const categories = await Category.aggregate([
+      {
+        $lookup: {
+          from: 'products',
+          localField: '_id',
+          foreignField: 'categoryId',
+          as: 'products'
+        }
+      },
+      {
+        $addFields: {
+          productCount: { $size: '$products' }
+        }
+      },
+      {
+        $project: {
+          products: 0
+        }
+      },
+      { $sort: { displayOrder: 1, name: 1 } }
+    ]);
     res.json(categories);
   } catch (err) {
+    console.error('Error fetching categories:', err);
     res.status(500).json({ message: 'Error fetching categories' });
   }
 });
