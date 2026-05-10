@@ -1156,6 +1156,55 @@ router.get('/users', async (req, res) => {
   }
 });
 
+router.post('/users', async (req, res) => {
+  try {
+    const { fullName, email, password, role = 'user', phone } = req.body;
+    
+    // Check if user exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ message: 'User already exists' });
+    }
+
+    const user = new User({
+      fullName,
+      email,
+      password,
+      role,
+      phone
+    });
+
+    await user.save();
+    res.status(201).json(user);
+  } catch (err) {
+    console.error('Error creating user:', err);
+    res.status(500).json({ message: 'Error creating user' });
+  }
+});
+
+router.put('/users/:id', async (req, res) => {
+  try {
+    const { fullName, email, role, phone } = req.body;
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    user.fullName = fullName || user.fullName;
+    user.email = email || user.email;
+    user.role = role || user.role;
+    user.phone = phone || user.phone;
+
+    if (req.body.password) {
+      user.password = req.body.password;
+    }
+
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    console.error('Error updating user:', err);
+    res.status(500).json({ message: 'Error updating user' });
+  }
+});
+
 router.delete('/users/:id', async (req, res) => {
   try {
     // Do not allow deleting admins
