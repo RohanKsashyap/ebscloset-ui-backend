@@ -51,10 +51,45 @@ const sanitizeString = (val) => {
 // Product CRUD
 router.get('/products', async (req, res) => {
   try {
-    const products = await Product.find().sort({ createdAt: -1 }).populate('categoryId', 'name slug');
+    const { categoryId, search } = req.query;
+    let query = {};
+
+    if (categoryId && categoryId !== 'all') {
+      query.categoryId = categoryId;
+    }
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const products = await Product.find(query).sort({ createdAt: -1 }).populate('categoryId', 'name slug');
     res.json(products);
   } catch (err) {
+    console.error('Error fetching products:', err);
     res.status(500).json({ message: 'Error fetching products' });
+  }
+});
+
+// Search suggestions endpoint
+router.get('/products/suggestions', async (req, res) => {
+  try {
+    const { search } = req.query;
+    if (!search) return res.json([]);
+
+    const suggestions = await Product.find({
+      name: { $regex: search, $options: 'i' }
+    })
+    .select('name image price categoryId')
+    .limit(5)
+    .populate('categoryId', 'name');
+
+    res.json(suggestions);
+  } catch (err) {
+    console.error('Error fetching suggestions:', err);
+    res.status(500).json({ message: 'Error fetching suggestions' });
   }
 });
 
