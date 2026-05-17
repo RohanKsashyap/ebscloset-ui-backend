@@ -9,6 +9,7 @@ const productSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   category: { type: String, default: 'Uncategorized' }, // legacy string
   categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', default: null },
+  brand: { type: String, default: '' },
   image: { type: String, default: '' },
   imageId: { type: String, default: '' },  // ImageKit file ID for deletion
   thumbnailUrl: { type: String, default: '' }, // ImageKit thumbnail URL
@@ -31,6 +32,7 @@ const productSchema = new mongoose.Schema({
   size: { type: String, default: '' }, // Legacy size information
   sizes: [{ type: String }], // Multiple size options (e.g., S, M, L, XL, 32, 34)
   color: { type: String, default: '' }, // Color information
+  colors: [{ type: String }], // Multiple color options
   minStock: { type: Number, default: 5 }, // Minimum stock threshold for "few left" indicator
   newarrival: { type: Boolean, default: false },
   trending: { type: Boolean, default: false },
@@ -41,11 +43,20 @@ const productSchema = new mongoose.Schema({
     enum: ["0-1", "1-2", "3-4", "5-6", "7-8", "9-10", "11-12", "13-14"]
   }],
   variants: [{ 
+    sku: { type: String, required: true },
+    attributes: {
+      size: { type: String },
+      color: { type: String }
+    },
+    price: { type: Number, required: true },
+    stock: {
+      quantity: { type: Number, default: 0 },
+      minStock: { type: Number, default: 5 }
+    },
+    images: [String],
+    // Keeping some old fields inside variants for partial compatibility if needed
     name: String, 
-    size: { type: String, default: '' },
-    price: { type: Number, default: '' }, 
-    inStock: { type: Number, default: 0 },
-    minStock: { type: Number, default: 5 } // Minimum stock threshold for variants
+    inStock: { type: Number, default: 0 } // Mapping to stock.quantity
   }]
 }, { timestamps: true });
 

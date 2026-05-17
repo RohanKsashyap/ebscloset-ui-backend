@@ -16,6 +16,7 @@ const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, uploadImageFromUrl, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
 const { sendOrderConfirmation } = require('../utils/email');
+const { generateSKU } = require('../utils/sku');
 const crypto = require('crypto');
 
 const router = Router();
@@ -117,12 +118,14 @@ router.post('/products', async (req, res) => {
     const size = sanitizeString(req.body.size);
     const sizes = req.body.sizes || [];
     const color = sanitizeString(req.body.color);
+    const colors = req.body.colors || [];
     const minStock = req.body.minStock;
     const trending = req.body.trending;
     const bestseller = req.body.bestseller;
     const newarrival = req.body.newarrival;
     const assured = req.body.assured;
     const ageGroups = req.body.ageGroups || [];
+    const brand = sanitizeString(req.body.brand);
     
     let imageUrl = '';
     let imageId = '';
@@ -257,22 +260,90 @@ router.post('/products', async (req, res) => {
       video3Url = sanitizeString(req.body.video3);
     }
     
-    // Parse variants if provided
+    // Parse colors and sizes to generate variants
+    const parsedColors = Array.isArray(colors) ? colors : (colors ? [colors] : []);
+    const parsedSizes = Array.isArray(sizes) ? sizes : (sizes ? [sizes] : []);
+
+    // Parse variants if provided manually (backward compatibility)
     let variants = [];
-    if (req.body.variants && req.body.variants.trim() !== '') {
+    if (req.body.variants && typeof req.body.variants === 'string' && req.body.variants.trim() !== '') {
       try {
-        variants = JSON.parse(req.body.variants);
+        const parsedVariants = JSON.parse(req.body.variants);
+        if (Array.isArray(parsedVariants)) {
+          variants = parsedVariants.map(v => {
+            // Map frontend format to backend model structure
+            const vColor = v.attributes?.color || v.color || v.name || '';
+            const vSize = v.attributes?.size || v.size || '';
+            
+            return {
+              sku: v.sku || generateSKU(name, vColor, vSize),
+              attributes: {
+                color: vColor || undefined,
+                size: vSize || undefined
+              },
+              price: Number(v.price || price || 0),
+              stock: {
+                quantity: Number(v.stock?.quantity ?? v.inStock ?? 0),
+                minStock: Number(v.stock?.minStock ?? minStock ?? 5)
+              },
+              // Keep legacy fields for compatibility
+              name: v.name || `${name}${vColor ? ' - ' + vColor : ''}${vSize ? ' - ' + vSize : ''}`,
+              inStock: Number(v.inStock ?? v.stock?.quantity ?? 0)
+            };
+          });
+        }
       } catch (e) {
         console.error('Error parsing variants:', e);
       }
     }
+
+    // Auto-generate variants ONLY if none provided from frontend
+    if (variants.length === 0 && (parsedColors.length > 0 || parsedSizes.length > 0)) {
+      const colorsToLoop = parsedColors.length > 0 ? parsedColors : [''];
+      const sizesToLoop = parsedSizes.length > 0 ? parsedSizes : [''];
+
+      for (const c of colorsToLoop) {
+        for (const s of sizesToLoop) {
+          variants.push({
+            sku: generateSKU(name, c, s),
+            attributes: {
+              color: c || undefined,
+              size: s || undefined
+            },
+            price: Number(price),
+            stock: {
+              quantity: Number(inStock) || 0,
+              minStock: Number(minStock) || 5
+            },
+            // Legacy mapping
+            name: `${name}${c ? ' - ' + c : ''}${s ? ' - ' + s : ''}`,
+            inStock: Number(inStock) || 0
+          });
+        }
+      }
+    } else if (variants.length === 0) {
+      // Create a default variant if no options provided
+      variants.push({
+        sku: generateSKU(name),
+        attributes: {},
+        price: Number(price),
+        stock: {
+          quantity: Number(inStock) || 0,
+          minStock: Number(minStock) || 5
+        },
+        name: name,
+        inStock: Number(inStock) || 0
+      });
+    }
     
     const product = await Product.create({
+      id: req.body.id ? Number(req.body.id) : undefined,
       name,
       slug: generateSlug(name),
       price: Number(price),
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
       description,
+      brand,
       category: req.body.category || undefined, // legacy support if client still sends name
       categoryId: categoryId || null,
       image: imageUrl,
@@ -292,21 +363,27 @@ router.post('/products', async (req, res) => {
       video3Id,
       inStock: Number(inStock),
       size: size || '',
-      sizes: Array.isArray(sizes) ? sizes : [sizes],
+      sizes: parsedSizes,
       color: color || '',
+      colors: parsedColors,
       minStock: Number(minStock) || 5, // Default to 5 if not provided
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,
       newarrival: newarrival === 'true' || newarrival === true,
       assured: assured === 'true' || assured === true,
-      ageGroups: Array.isArray(ageGroups) ? ageGroups : [ageGroups],
+      ageGroups: (Array.isArray(ageGroups) ? ageGroups : [ageGroups]).filter(group => group && group !== 'undefined'),
       variants
     });
     
     res.json(product);
   } catch (err) {
-    console.error('Error creating product:', err);
-    res.status(500).json({ message: 'Error creating product', error: err.message });
+    console.error('Error creating product. Body:', req.body);
+    console.error('Stack:', err.stack);
+    res.status(500).json({ 
+      message: 'Error creating product', 
+      error: err.message,
+      details: err.errors // Include Mongoose validation details if present
+    });
   }
 });
 
@@ -407,10 +484,12 @@ router.put('/products/:id', async (req, res) => {
     const originalPrice = req.body.originalPrice;
     const description = sanitizeString(req.body.description);
     const categoryId = sanitizeString(req.body.categoryId);
+    const brand = sanitizeString(req.body.brand);
     const inStock = req.body.inStock;
     const size = sanitizeString(req.body.size);
     const sizes = req.body.sizes || [];
     const color = sanitizeString(req.body.color);
+    const colors = req.body.colors || [];
     const minStock = req.body.minStock;
     const trending = req.body.trending;
     const bestseller = req.body.bestseller;
@@ -423,11 +502,13 @@ router.put('/products/:id', async (req, res) => {
       price: Number(price),
       originalPrice: originalPrice ? Number(originalPrice) : undefined,
       description,
+      brand,
       categoryId: categoryId || null,
       inStock: Number(inStock),
       size: size || '',
-      sizes: Array.isArray(sizes) ? sizes : [sizes],
+      sizes: Array.isArray(sizes) ? sizes : (sizes ? [sizes] : []),
       color: color || '',
+      colors: Array.isArray(colors) ? colors : (colors ? [colors] : []),
       minStock: Number(minStock) || 5, // Default to 5 if not provided
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,
@@ -445,14 +526,65 @@ router.put('/products/:id', async (req, res) => {
     }
     
     // Parse variants if provided
+    let variants = [];
     if (req.body.variants && typeof req.body.variants === 'string' && req.body.variants.trim() !== '') {
       try {
-        updateData.variants = JSON.parse(req.body.variants);
+        variants = JSON.parse(req.body.variants);
       } catch (e) {
         console.error('Error parsing variants:', e);
       }
     } else if (Array.isArray(req.body.variants)) {
-      updateData.variants = req.body.variants;
+      variants = req.body.variants;
+    }
+
+    // Auto-generate variants if none provided and attributes exist
+    if (variants.length === 0 && (updateData.colors.length > 0 || updateData.sizes.length > 0)) {
+      const colorsToLoop = updateData.colors.length > 0 ? updateData.colors : [''];
+      const sizesToLoop = updateData.sizes.length > 0 ? updateData.sizes : [''];
+
+      for (const c of colorsToLoop) {
+        for (const s of sizesToLoop) {
+          const sku = generateSKU(name, c, s);
+          
+          // Try to find existing variant to preserve stock
+          const existingVariant = existingProduct.variants.find(v => v.sku === sku);
+          
+          variants.push({
+            sku,
+            attributes: {
+              color: c || undefined,
+              size: s || undefined
+            },
+            price: Number(price),
+            stock: {
+              quantity: existingVariant ? (existingVariant.stock?.quantity ?? existingVariant.inStock ?? 0) : (Number(inStock) || 0),
+              minStock: existingVariant ? (existingVariant.stock?.minStock ?? existingVariant.minStock ?? 5) : (Number(minStock) || 5)
+            },
+            // Legacy mapping
+            name: `${name}${c ? ' - ' + c : ''}${s ? ' - ' + s : ''}`,
+            inStock: existingVariant ? (existingVariant.stock?.quantity ?? existingVariant.inStock ?? 0) : (Number(inStock) || 0)
+          });
+        }
+      }
+      updateData.variants = variants;
+    } else if (variants.length > 0) {
+      updateData.variants = variants;
+    } else {
+      // Default single variant if none exists
+      const sku = generateSKU(name);
+      const existingVariant = existingProduct.variants.find(v => v.sku === sku);
+      
+      updateData.variants = [{
+        sku,
+        attributes: {},
+        price: Number(price),
+        stock: {
+          quantity: existingVariant ? (existingVariant.stock?.quantity ?? existingVariant.inStock ?? 0) : (Number(inStock) || 0),
+          minStock: existingVariant ? (existingVariant.stock?.minStock ?? existingVariant.minStock ?? 5) : (Number(minStock) || 5)
+        },
+        name: name,
+        inStock: existingVariant ? (existingVariant.stock?.quantity ?? existingVariant.inStock ?? 0) : (Number(inStock) || 0)
+      }];
     }
     
     // Handle image upload if file is provided
