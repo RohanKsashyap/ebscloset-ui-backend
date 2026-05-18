@@ -1,4 +1,5 @@
 const { Router } = require('express');
+const mongoose = require('mongoose');
 const os = require('os');
 const Product = require('../models/Product');
 const Order = require('../models/Order');
@@ -1434,28 +1435,61 @@ router.get('/dashboard', async (req, res) => {
 
     // Fetch product details for images
     const topProducts = await Promise.all(topSellingData.map(async (item) => {
-      const product = await Product.findById(item._id).select('image sku');
-      return {
-        _id: item._id,
-        name: item.name,
-        price: item.price,
-        sold: item.totalSold,
-        image: product?.image || '',
-        sku: product?.sku || ''
-      };
+      try {
+        let product = null;
+        
+        // Try to find by ObjectId if valid
+        if (mongoose.Types.ObjectId.isValid(item._id)) {
+          product = await Product.findById(item._id).select('image sku variants');
+        } else {
+          // Try to find by legacy numeric ID
+          product = await Product.findOne({ id: Number(item._id) }).select('image sku variants');
+        }
+
+        // Get SKU from top level or first variant
+        let sku = product?.sku || '';
+        if (!sku && product?.variants?.length > 0) {
+          sku = product.variants[0].sku;
+        }
+
+        return {
+          _id: item._id,
+          name: item.name,
+          price: item.price,
+          sold: item.totalSold,
+          image: product?.image || '',
+          sku: sku
+        };
+      } catch (err) {
+        console.error(`Error fetching product details for dashboard: ${item._id}`, err);
+        return {
+          _id: item._id,
+          name: item.name,
+          price: item.price,
+          sold: item.totalSold,
+          image: '',
+          sku: ''
+        };
+      }
     }));
 
     // If no sales yet, fallback to recent products for display
     if (topProducts.length === 0) {
-      const fallbackProducts = await Product.find().limit(5).select('name price image sku');
-      topProducts.push(...fallbackProducts.map(p => ({
-        _id: p._id,
-        name: p.name,
-        price: p.price,
-        sold: 0,
-        image: p.image,
-        sku: p.sku
-      })));
+      const fallbackProducts = await Product.find().limit(5).select('name price image sku variants');
+      topProducts.push(...fallbackProducts.map(p => {
+        let sku = p.sku || '';
+        if (!sku && p.variants?.length > 0) {
+          sku = p.variants[0].sku;
+        }
+        return {
+          _id: p._id,
+          name: p.name,
+          price: p.price,
+          sold: 0,
+          image: p.image,
+          sku: sku
+        };
+      }));
     }
     
     // Get monthly sales data (last 6 months)
