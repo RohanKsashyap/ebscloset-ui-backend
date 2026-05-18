@@ -212,19 +212,48 @@ router.get('/orders', auth, async (req, res) => {
 
 router.post('/stripe-session', async (req, res) => {
   try {
-    const { cart, customer, successUrl, cancelUrl } = req.body;
+    const { cart, customer, successUrl, cancelUrl, shippingFee, tax } = req.body;
     
     // Create line items for Stripe
     const lineItems = cart.map(item => ({
       price_data: {
-        currency: 'usd',
+        currency: 'aud',
         product_data: {
           name: item.title,
+          description: item.variantName ? `Size: ${item.variantName}` : undefined,
         },
-        unit_amount: item.unitPrice, // Already in cents
+        unit_amount: Math.round(item.unitPrice), // Already in cents
       },
       quantity: item.quantity,
     }));
+
+    // Add shipping fee if present
+    if (shippingFee > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: 'Shipping Fee',
+          },
+          unit_amount: Math.round(shippingFee),
+        },
+        quantity: 1,
+      });
+    }
+
+    // Add tax if present
+    if (tax > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: 'Tax (GST)',
+          },
+          unit_amount: Math.round(tax),
+        },
+        quantity: 1,
+      });
+    }
     
     // Create Stripe session
     const session = await stripe.checkout.sessions.create({
@@ -242,7 +271,9 @@ router.post('/stripe-session', async (req, res) => {
           quantity: item.quantity,
           title: item.title,
           price: item.unitPrice / 100
-        })))
+        }))),
+        tax: tax ? String(tax) : '0',
+        shippingFee: shippingFee ? String(shippingFee) : '0'
       }
     });
     
@@ -300,13 +331,15 @@ router.post('/webhook', async (req, res) => {
       // Create order in database
       const subtotal = products.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const totalAmount = session.amount_total / 100;
-      const shippingFee = Math.max(0, totalAmount - subtotal);
+      const tax = Number(session.metadata.tax || 0) / 100;
+      const shippingFee = Number(session.metadata.shippingFee || 0) / 100;
 
       const order = new Order({
         products,
         customer,
         subtotal,
         shippingFee,
+        tax,
         totalAmount,
         paymentMethod: 'Stripe',
         status: 'processing'
