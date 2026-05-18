@@ -182,6 +182,70 @@ router.post('/cod', async (req, res) => {
   }
 });
 
+// Route to create a Stripe payment session for an existing order (e.g., COD to Prepaid)
+router.post('/create-payment-session/:id', async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Create line items for Stripe
+    const lineItems = order.products.map(item => ({
+      price_data: {
+        currency: 'aud',
+        product_data: {
+          name: item.title,
+          description: item.variantName ? `Variant: ${item.variantName}` : undefined,
+        },
+        unit_amount: Math.round(item.price * 100),
+      },
+      quantity: item.quantity,
+    }));
+
+    if (order.shippingFee > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: { name: 'Shipping Fee' },
+          unit_amount: Math.round(order.shippingFee * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    if (order.tax > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: { name: 'Tax (GST)' },
+          unit_amount: Math.round(order.tax * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    const frontendOrigin = process.env.FRONTEND_ORIGIN || 'http://localhost:5173';
+    
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: lineItems,
+      mode: 'payment',
+      success_url: `${frontendOrigin}/order-success?id=${order._id}&payment=success`,
+      cancel_url: `${frontendOrigin}/order-success?id=${order._id}&payment=cancel`,
+      customer_email: order.customer.email,
+      metadata: {
+        existingOrderId: order._id.toString()
+      }
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error('Error creating payment session:', err);
+    res.status(500).json({ message: 'Error creating payment session' });
+  }
+});
+
 router.get('/order/:id', async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -300,6 +364,21 @@ router.post('/webhook', async (req, res) => {
     const session = event.data.object;
     
     try {
+      // Check if this was a payment for an existing order
+      if (session.metadata && session.metadata.existingOrderId) {
+        const order = await Order.findById(session.metadata.existingOrderId);
+        if (order) {
+          order.paymentMethod = 'Stripe';
+          order.status = 'processing';
+          await order.save();
+          
+          // Send payment confirmation email
+          try { await sendOrderConfirmation(order); } catch (_) {}
+          
+          return res.json({ received: true });
+        }
+      }
+
       // Extract customer data and cart data from metadata
       const customer = JSON.parse(session.metadata.customerData);
       const cartItems = JSON.parse(session.metadata.cartData || '[]');

@@ -24,8 +24,13 @@ function isEmailEnabled() {
 }
 
 const FRONTEND_ORIGIN = 'https://www.ebscloset.com.au';
+const API_ORIGIN = process.env.API_ORIGIN || 'https://api.ebscloset.com.au';
 
-function formatOrderHtml(order) {
+async function getPaymentLink(orderId) {
+  return `${API_ORIGIN}/api/checkout/create-payment-session/${orderId}`;
+}
+
+async function formatOrderHtml(order) {
   const itemsRows = (order.products || [])
     .map(
       (p) => `
@@ -47,7 +52,23 @@ function formatOrderHtml(order) {
     .join('');
 
   const paymentMethodDisplay = order.paymentMethod === 'COD' ? 'Cash on Delivery' : (order.paymentMethod || 'Paid');
-  const viewOrderUrl = `${FRONTEND_ORIGIN}/order-success?id=${order._id}`;
+  const viewOrderUrl = `${FRONTEND_ORIGIN}/order-confirmation?id=${order._id}`;
+  
+  // Pay Now logic for COD
+  let payNowSection = '';
+  if (order.paymentMethod === 'COD') {
+    const payNowUrl = `${FRONTEND_ORIGIN}/order-confirmation?id=${order._id}&payNow=true`;
+    payNowSection = `
+      <tr>
+        <td style="padding:20px 30px 40px; text-align:center;">
+          <div style="background-color:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:20px;">
+            <p style="margin:0 0 15px; color:#856404; font-size:15px;">Want to skip the queue? Pay now securely with your card.</p>
+            <a href="${payNowUrl}" style="display:inline-block; padding:15px 30px; background-color:#ffc107; color:#000000; text-decoration:none; border-radius:4px; font-weight:bold; font-size:15px; text-transform:uppercase; letter-spacing:1px;">Pay Now with Card</a>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
 
   return `
     <!DOCTYPE html>
@@ -73,7 +94,7 @@ function formatOrderHtml(order) {
               <!-- Order Status -->
               <tr>
                 <td style="padding:30px 30px 20px;">
-                  <h2 style="margin:0 0 10px; color:#333; font-size:20px;">Thank you for your order!</h2>
+                  <h2 style="margin:0 0 10px; color:#333; font-size:20px;">${order.paymentMethod === 'COD' ? 'Order Received!' : 'Thank you for your order!'}</h2>
                   <p style="margin:0; color:#666; font-size:15px; line-height:1.5;">
                     Hi ${order.customer?.fullName || 'there'}, we've received your order and it's being processed. We'll send you another update when your items are on their way.
                   </p>
@@ -135,6 +156,9 @@ function formatOrderHtml(order) {
                   </table>
                 </td>
               </tr>
+
+              <!-- Pay Now Section (Conditional) -->
+              ${payNowSection}
 
               <!-- View Order Button -->
               <tr>
@@ -210,8 +234,10 @@ async function sendOrderConfirmation(order) {
     console.warn('Order confirmation skipped: customer email missing');
     return { skipped: true };
   }
-  const subject = `Order Confirmed - ${order.orderId || order._id}`;
-  const html = formatOrderHtml(order);
+  const subject = order.paymentMethod === 'COD' 
+    ? `Order Received - ${order.orderId || order._id}`
+    : `Order Confirmed - ${order.orderId || order._id}`;
+  const html = await formatOrderHtml(order);
   // BCC admin if provided
   const bcc = EMAIL_ADMIN || undefined;
   return sendEmail({ to, subject, html, bcc });
