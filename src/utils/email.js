@@ -23,7 +23,7 @@ function isEmailEnabled() {
   return Boolean(SMTP_USER && SMTP_PASS);
 }
 
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || 'https://www.ebscloset.com.au';
+const FRONTEND_ORIGIN = 'https://www.ebscloset.com.au';
 
 function formatOrderHtml(order) {
   const itemsRows = (order.products || [])
