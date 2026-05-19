@@ -7,7 +7,10 @@ const orderSchema = new mongoose.Schema({
     image: String,
     price: Number,
     quantity: Number,
-    variantName: String
+    variantName: String,
+    sku: String,
+    color: String,
+    variantId: String
   }],
   customer: {
     fullName: String,
@@ -24,7 +27,8 @@ const orderSchema = new mongoose.Schema({
   tax: Number,
   totalAmount: Number,
   orderId: { type: String, unique: true },
-  status: { type: String, default: 'pending', lowercase: true, trim: true }
+  status: { type: String, default: 'pending', lowercase: true, trim: true },
+  stockDecremented: { type: Boolean, default: false }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Order', orderSchema);

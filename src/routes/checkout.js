@@ -25,7 +25,10 @@ router.post('/cod', async (req, res) => {
       title: item.title,
       price: item.unitPrice / 100, // Convert cents to dollars
       quantity: item.quantity,
-      variantName: item.variantName || ''
+      variantName: item.variantName || '',
+      sku: item.sku,
+      color: item.color,
+      variantId: item.variantId
     }));
     
     const subtotal = products.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -57,44 +60,60 @@ router.post('/cod', async (req, res) => {
           item.image = '';
         }
       }
-      if (item.variantName) {
-        const lowerVariantName = item.variantName.toLowerCase();
-        let variant = (productDoc.variants || []).find(v => 
-          (v.name && v.name.toLowerCase() === lowerVariantName) || 
-          (v.size && v.size.toLowerCase() === lowerVariantName)
-        );
-        
-        // Fallback: Check the legacy 'stock' object if variants array is empty
-        if (!variant && productDoc.stock && productDoc.stock[item.variantName] !== undefined) {
-          variant = {
-            name: item.variantName,
-            inStock: Number(productDoc.stock[item.variantName]) || 0
-          };
+
+      // Stock validation logic
+      let availableStock = 0;
+      let selectedVariant = null;
+
+      if (productDoc.variants && productDoc.variants.length > 0) {
+        // 1. Try matching by variantId (most reliable if present)
+        if (item.variantId) {
+          selectedVariant = productDoc.variants.id(item.variantId);
         }
 
-        // Final fallback: Use top-level inStock if no variants array is present or if it's empty
-        // OR if the variantName is in the 'sizes' array but not explicitly in 'variants'
-        if (!variant) {
-          const isInSizesArray = (productDoc.sizes || []).some(s => s.toLowerCase() === lowerVariantName);
-          if (isInSizesArray || !productDoc.variants || productDoc.variants.length === 0) {
-            // If it's in the sizes array, treat it as a valid variant using top-level stock
-            variant = {
-              name: item.variantName,
-              inStock: productDoc.inStock ?? 0
-            };
-          }
+        // 2. Try matching by SKU
+        if (!selectedVariant && item.sku) {
+          selectedVariant = productDoc.variants.find(v => v.sku === item.sku);
         }
 
-        if (!variant) {
-          return res.status(400).json({ message: `Variant not found for ${productDoc.name}: ${item.variantName}` });
+        // 3. Try matching by color AND size
+        if (!selectedVariant && item.color && item.variantName) {
+          selectedVariant = productDoc.variants.find(v => {
+            const vColor = (v.attributes?.color || v.color || '').toLowerCase();
+            const vSize = (v.attributes?.size || v.size || '').toLowerCase();
+            return vColor === item.color.toLowerCase() && vSize === item.variantName.toLowerCase();
+          });
         }
-        if ((variant.inStock ?? 0) < qty) {
-          return res.status(400).json({ message: `${productDoc.name} (${variant.name}) is out of stock or insufficient quantity` });
+
+        // 4. Try matching by name/size fallback (current logic)
+        if (!selectedVariant && item.variantName) {
+          const lowerVariantName = item.variantName.toLowerCase();
+          selectedVariant = productDoc.variants.find(v => {
+            const vName = (v.name || '').toLowerCase();
+            const vSize = (v.size || v.attributes?.size || '').toLowerCase();
+            return vName === lowerVariantName || vSize === lowerVariantName;
+          });
         }
-      } else {
-        if ((productDoc.inStock ?? 0) < qty) {
-          return res.status(400).json({ message: `${productDoc.name} is out of stock or insufficient quantity` });
+
+        if (selectedVariant) {
+          availableStock = Number(selectedVariant.stock?.quantity ?? selectedVariant.inStock ?? 0);
         }
+      }
+
+      // Fallback: Check the legacy 'stock' object
+      if (!selectedVariant && productDoc.stock && item.variantName && productDoc.stock[item.variantName] !== undefined) {
+        availableStock = Number(productDoc.stock[item.variantName]) || 0;
+      } 
+      // Fallback: Use top-level inStock if no variants or no match
+      else if (!selectedVariant) {
+        availableStock = Number(productDoc.inStock) || 0;
+      }
+
+      if (availableStock < qty) {
+        const variantLabel = selectedVariant 
+          ? (selectedVariant.name || selectedVariant.size || item.variantName)
+          : item.variantName;
+        return res.status(400).json({ message: `${productDoc.name} ${variantLabel ? `(${variantLabel})` : ''} is out of stock or insufficient quantity` });
       }
     }
     
@@ -278,6 +297,65 @@ router.post('/stripe-session', async (req, res) => {
   try {
     const { cart, customer, successUrl, cancelUrl, shippingFee, tax } = req.body;
     
+    // Validate stock before creating Stripe session
+    for (const item of cart) {
+      let productDoc = null;
+      try {
+        productDoc = await Product.findById(item.productId);
+      } catch (_) {}
+      if (!productDoc) {
+        productDoc = await Product.findOne({ name: item.title });
+      }
+      if (!productDoc) {
+        return res.status(400).json({ message: `Product not found: ${item.title}` });
+      }
+
+      const qty = Number(item.quantity) || 1;
+      let availableStock = 0;
+      let selectedVariant = null;
+
+      if (productDoc.variants && productDoc.variants.length > 0) {
+        if (item.variantId) {
+          selectedVariant = productDoc.variants.id(item.variantId);
+        }
+        if (!selectedVariant && item.sku) {
+          selectedVariant = productDoc.variants.find(v => v.sku === item.sku);
+        }
+        if (!selectedVariant && item.color && item.variantName) {
+          selectedVariant = productDoc.variants.find(v => {
+            const vColor = (v.attributes?.color || v.color || '').toLowerCase();
+            const vSize = (v.attributes?.size || v.size || '').toLowerCase();
+            return vColor === item.color.toLowerCase() && vSize === item.variantName.toLowerCase();
+          });
+        }
+        if (!selectedVariant && item.variantName) {
+          const lowerVariantName = item.variantName.toLowerCase();
+          selectedVariant = productDoc.variants.find(v => {
+            const vName = (v.name || '').toLowerCase();
+            const vSize = (v.size || v.attributes?.size || '').toLowerCase();
+            return vName === lowerVariantName || vSize === lowerVariantName;
+          });
+        }
+
+        if (selectedVariant) {
+          availableStock = Number(selectedVariant.stock?.quantity ?? selectedVariant.inStock ?? 0);
+        }
+      }
+
+      if (!selectedVariant && productDoc.stock && item.variantName && productDoc.stock[item.variantName] !== undefined) {
+        availableStock = Number(productDoc.stock[item.variantName]) || 0;
+      } else if (!selectedVariant) {
+        availableStock = Number(productDoc.inStock) || 0;
+      }
+
+      if (availableStock < qty) {
+        const variantLabel = selectedVariant 
+          ? (selectedVariant.name || selectedVariant.size || item.variantName)
+          : item.variantName;
+        return res.status(400).json({ message: `${productDoc.name} ${variantLabel ? `(${variantLabel})` : ''} is out of stock or insufficient quantity` });
+      }
+    }
+
     // Create line items for Stripe
     const lineItems = cart.map(item => ({
       price_data: {
@@ -334,7 +412,10 @@ router.post('/stripe-session', async (req, res) => {
           variantName: item.variantName || '',
           quantity: item.quantity,
           title: item.title,
-          price: item.unitPrice / 100
+          price: item.unitPrice / 100,
+          sku: item.sku,
+          color: item.color,
+          variantId: item.variantId
         }))),
         tax: tax ? String(tax) : '0',
         shippingFee: shippingFee ? String(shippingFee) : '0'
@@ -370,6 +451,16 @@ router.post('/webhook', async (req, res) => {
         if (order) {
           order.paymentMethod = 'Stripe';
           order.status = 'processing';
+          
+          if (!order.stockDecremented) {
+            try {
+              await decrementStock(order.products, order._id);
+              order.stockDecremented = true;
+            } catch (err) {
+              console.error('Inventory decrement failed for existing order upgrade:', err);
+            }
+          }
+          
           await order.save();
           
           // Send payment confirmation email
@@ -403,7 +494,10 @@ router.post('/webhook', async (req, res) => {
           image: image,
           price: item.price,
           quantity: item.quantity,
-          variantName: item.variantName || ''
+          variantName: item.variantName || '',
+          sku: item.sku,
+          color: item.color,
+          variantId: item.variantId
         };
       }));
       
@@ -426,14 +520,16 @@ router.post('/webhook', async (req, res) => {
 
       // Generate readable orderId from _id
       order.orderId = `AC-${order._id.toString().toUpperCase()}`;
-      await order.save();
-
-      // Note: Stock decrement is now handled by admin on order approval
-      /*
-      try { await decrementStock(products, order._id); } catch (err) {
+      
+      // Handle stock decrement for paid orders immediately
+      try { 
+        await decrementStock(products, order._id);
+        order.stockDecremented = true;
+      } catch (err) {
         console.error('Inventory decrement failed for Stripe:', err);
       }
-      */
+      
+      await order.save();
 
       // Fire-and-forget order confirmation email (SendGrid/Twilio)
       try { await sendOrderConfirmation(order); } catch (_) {}

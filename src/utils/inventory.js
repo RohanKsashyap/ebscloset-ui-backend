@@ -2,16 +2,74 @@ const Product = require('../models/Product');
 const InventoryLog = require('../models/InventoryLog');
 
 /**
+ * Finds the index of a variant in a product's variants array based on order item details.
+ * @param {Object} product - The product document
+ * @param {Object} item - The order item object
+ * @returns {number} - The index of the matching variant or -1
+ */
+const findVariantIndex = (product, item) => {
+  if (!product.variants || !Array.isArray(product.variants) || product.variants.length === 0) {
+    return -1;
+  }
+
+  // 1. Match by variantId
+  if (item.variantId) {
+    const idx = product.variants.findIndex(v => v._id.toString() === item.variantId.toString());
+    if (idx !== -1) return idx;
+  }
+
+  // 2. Match by SKU
+  if (item.sku) {
+    const idx = product.variants.findIndex(v => v.sku === item.sku);
+    if (idx !== -1) return idx;
+  }
+
+  const lowerVariantName = (item.variantName || '').toLowerCase();
+  const lowerColor = (item.color || '').toLowerCase();
+
+  // 3. Match by color AND size/variantName
+  if (lowerColor && lowerVariantName) {
+    const idx = product.variants.findIndex(v => {
+      const vColor = (v.attributes?.color || v.color || '').toLowerCase();
+      const vSize = (v.attributes?.size || v.size || '').toLowerCase();
+      return vColor === lowerColor && vSize === lowerVariantName;
+    });
+    if (idx !== -1) return idx;
+  }
+
+  // 4. Match by name/size/color fallback
+  return product.variants.findIndex(v => {
+    const vColor = (v.attributes?.color || v.color || '').toLowerCase();
+    const vSize = (v.attributes?.size || v.size || '').toLowerCase();
+    const vName = (v.name || '').toLowerCase();
+
+    // Check if lowerVariantName matches name, size, or color
+    if (lowerVariantName && (vName === lowerVariantName || vSize === lowerVariantName || vColor === lowerVariantName)) {
+      return true;
+    }
+
+    // Check if lowerColor matches color or name
+    if (lowerColor && (vColor === lowerColor || vName === lowerColor)) {
+      return true;
+    }
+
+    return false;
+  });
+};
+
+/**
  * Decrements stock for products in an order and logs the changes.
  * @param {Array} products - Array of product objects from the order
  * @param {String} orderId - The ID of the order for logging purposes
  */
 const decrementStock = async (products, orderId) => {
+  console.log(`Inventory: Starting stock decrement for order ${orderId}`);
+  
   for (const item of products) {
     try {
       let product = await Product.findById(item.productId);
       
-      // Fallback to finding by title if productId is not a valid Mongo ID (sometimes happens with Stripe products)
+      // Fallback to finding by title if productId is not a valid Mongo ID
       if (!product) {
         product = await Product.findOne({ name: item.title });
       }
@@ -24,64 +82,42 @@ const decrementStock = async (products, orderId) => {
       const qty = Number(item.quantity) || 0;
       let previousStock = 0;
       let newStock = 0;
+      let variantNameForLog = item.variantName || item.sku || 'Default';
 
-      if (item.sku) {
-        let variantIndex = product.variants.findIndex(v => v.sku === item.sku);
+      const variantIndex = findVariantIndex(product, item);
+
+      if (variantIndex !== -1) {
+        const variant = product.variants[variantIndex];
+        previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
+        newStock = Math.max(0, previousStock - qty);
         
-        if (variantIndex !== -1) {
-          const variant = product.variants[variantIndex];
-          previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
-          
-          // Update both new and legacy fields
-          if (variant.stock) {
-            variant.stock.quantity = Math.max(0, previousStock - qty);
-            newStock = variant.stock.quantity;
-          } else {
-            variant.inStock = Math.max(0, previousStock - qty);
-            newStock = variant.inStock;
-          }
-          
-          // Keep inStock legacy field in sync if it exists
-          variant.inStock = newStock;
-        } else {
-          console.error(`Inventory Error: SKU not found for ${product.name}: ${item.sku}`);
-          // Fallback to top-level if SKU not found? 
-          // Requirement says NEW LOGIC: Inventory updates must ONLY use SKU.
-          // But for safety during migration, we might fallback.
-          previousStock = product.inStock || 0;
-          product.inStock = Math.max(0, previousStock - qty);
-          newStock = product.inStock;
+        variantNameForLog = variant.name || variant.sku || `${variant.attributes?.color || ''} ${variant.attributes?.size || ''}`.trim() || variantNameForLog;
+
+        // Update both new and legacy fields
+        if (variant.stock) {
+          variant.stock.quantity = newStock;
         }
-      } else if (item.variantName) {
-        // LEGACY FALLBACK (to be removed once all items have SKU)
-        const lowerVariantName = item.variantName.toLowerCase();
-        let variantIndex = product.variants.findIndex(v => 
-          (v.name && v.name.toLowerCase() === lowerVariantName) || 
-          (v.size && v.size.toLowerCase() === lowerVariantName) ||
-          (v.sku && v.sku.toLowerCase() === lowerVariantName)
-        );
+        variant.inStock = newStock;
         
-        if (variantIndex !== -1) {
-          const variant = product.variants[variantIndex];
-          previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
-          
-          if (variant.stock) {
-            variant.stock.quantity = Math.max(0, previousStock - qty);
-            newStock = variant.stock.quantity;
-          } else {
-            variant.inStock = Math.max(0, previousStock - qty);
-            newStock = variant.inStock;
-          }
-          variant.inStock = newStock;
-        } else {
-          previousStock = product.inStock || 0;
-          product.inStock = Math.max(0, previousStock - qty);
-          newStock = product.inStock;
-        }
+        console.log(`Inventory: Decrementing variant "${variantNameForLog}" of "${product.name}" from ${previousStock} to ${newStock}`);
       } else {
+        // Fallback for non-variant products OR if no variant match found
+        // IMPORTANT: If variants exist but none matched, we still update top-level 
+        // but it will be overwritten by pre-save hook. We log a warning in this case.
+        if (product.variants && product.variants.length > 0) {
+          console.warn(`Inventory Warning: No variant match found for "${item.title}" (${item.variantName}/${item.color}) in order ${orderId}. Stock may not decrease correctly.`);
+        }
+
         previousStock = product.inStock || 0;
-        product.inStock = Math.max(0, previousStock - qty);
-        newStock = product.inStock;
+        newStock = Math.max(0, previousStock - qty);
+        product.inStock = newStock;
+        
+        console.log(`Inventory: Decrementing top-level stock of "${product.name}" from ${previousStock} to ${newStock}`);
+      }
+
+      // Mark as modified if it's a deep update that Mongoose might miss
+      if (variantIndex !== -1) {
+        product.markModified('variants');
       }
 
       await product.save();
@@ -90,7 +126,7 @@ const decrementStock = async (products, orderId) => {
       await InventoryLog.create({
         productId: product._id,
         productName: product.name,
-        variantName: item.variantName || item.sku || null,
+        variantName: variantNameForLog,
         change: -qty,
         previousStock,
         newStock,
@@ -111,6 +147,8 @@ const decrementStock = async (products, orderId) => {
  * @param {String} reason - The reason for increment ('order-returned' or 'order-cancelled')
  */
 const incrementStock = async (products, orderId, reason = 'order-returned') => {
+  console.log(`Inventory: Starting stock increment for order ${orderId} (Reason: ${reason})`);
+  
   for (const item of products) {
     try {
       let product = await Product.findById(item.productId);
@@ -127,58 +165,37 @@ const incrementStock = async (products, orderId, reason = 'order-returned') => {
       const qty = Number(item.quantity) || 0;
       let previousStock = 0;
       let newStock = 0;
+      let variantNameForLog = item.variantName || item.sku || 'Default';
 
-      if (item.sku) {
-        let variantIndex = product.variants.findIndex(v => v.sku === item.sku);
+      const variantIndex = findVariantIndex(product, item);
+
+      if (variantIndex !== -1) {
+        const variant = product.variants[variantIndex];
+        previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
+        newStock = previousStock + qty;
         
-        if (variantIndex !== -1) {
-          const variant = product.variants[variantIndex];
-          previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
-          
-          if (variant.stock) {
-            variant.stock.quantity = previousStock + qty;
-            newStock = variant.stock.quantity;
-          } else {
-            variant.inStock = previousStock + qty;
-            newStock = variant.inStock;
-          }
-          variant.inStock = newStock;
-        } else {
-          console.error(`Inventory Error: SKU not found for ${product.name}: ${item.sku}`);
-          previousStock = product.inStock || 0;
-          product.inStock = previousStock + qty;
-          newStock = product.inStock;
+        variantNameForLog = variant.name || variant.sku || `${variant.attributes?.color || ''} ${variant.attributes?.size || ''}`.trim() || variantNameForLog;
+
+        if (variant.stock) {
+          variant.stock.quantity = newStock;
         }
-      } else if (item.variantName) {
-        // LEGACY FALLBACK
-        const lowerVariantName = item.variantName.toLowerCase();
-        let variantIndex = product.variants.findIndex(v => 
-          (v.name && v.name.toLowerCase() === lowerVariantName) || 
-          (v.size && v.size.toLowerCase() === lowerVariantName) ||
-          (v.sku && v.sku.toLowerCase() === lowerVariantName)
-        );
+        variant.inStock = newStock;
         
-        if (variantIndex !== -1) {
-          const variant = product.variants[variantIndex];
-          previousStock = variant.stock?.quantity ?? variant.inStock ?? 0;
-          
-          if (variant.stock) {
-            variant.stock.quantity = previousStock + qty;
-            newStock = variant.stock.quantity;
-          } else {
-            variant.inStock = previousStock + qty;
-            newStock = variant.inStock;
-          }
-          variant.inStock = newStock;
-        } else {
-          previousStock = product.inStock || 0;
-          product.inStock = previousStock + qty;
-          newStock = product.inStock;
-        }
+        console.log(`Inventory: Incrementing variant "${variantNameForLog}" of "${product.name}" from ${previousStock} to ${newStock}`);
       } else {
+        if (product.variants && product.variants.length > 0) {
+          console.warn(`Inventory Warning: No variant match found for "${item.title}" (${item.variantName}/${item.color}) in order ${orderId}. Stock may not increase correctly.`);
+        }
+        
         previousStock = product.inStock || 0;
-        product.inStock = previousStock + qty;
-        newStock = product.inStock;
+        newStock = previousStock + qty;
+        product.inStock = newStock;
+        
+        console.log(`Inventory: Incrementing top-level stock of "${product.name}" from ${previousStock} to ${newStock}`);
+      }
+
+      if (variantIndex !== -1) {
+        product.markModified('variants');
       }
 
       await product.save();
@@ -186,7 +203,7 @@ const incrementStock = async (products, orderId, reason = 'order-returned') => {
       await InventoryLog.create({
         productId: product._id,
         productName: product.name,
-        variantName: item.variantName || item.sku || null,
+        variantName: variantNameForLog,
         change: qty,
         previousStock,
         newStock,

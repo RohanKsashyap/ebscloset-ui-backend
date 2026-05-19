@@ -337,8 +337,26 @@ router.post('/products', async (req, res) => {
       });
     }
     
+    const totalStockFromVariants = variants && variants.length > 0
+      ? variants.reduce((sum, v) => sum + (Number(v.stock?.quantity ?? v.inStock ?? 0)), 0)
+      : Number(inStock) || 0;
+
+    // Auto-sync sizes and colors arrays from variants if they exist
+    let finalSizes = parsedSizes;
+    let finalColors = parsedColors;
+    let finalColor = color || '';
+
+    if (variants && variants.length > 0) {
+      const variantSizes = new Set(variants.map(v => v.attributes?.size || v.size).filter(Boolean));
+      const variantColors = new Set(variants.map(v => v.attributes?.color || v.color).filter(Boolean));
+      
+      if (variantSizes.size > 0) finalSizes = Array.from(variantSizes);
+      if (variantColors.size > 0) finalColors = Array.from(variantColors);
+      if (variantColors.size === 1) finalColor = Array.from(variantColors)[0];
+    }
+
     const product = await Product.create({
-      id: req.body.id ? Number(req.body.id) : undefined,
+      id: (req.body.id && req.body.id !== '' && !isNaN(Number(req.body.id))) ? Number(req.body.id) : undefined,
       name,
       slug: generateSlug(name),
       price: Number(price),
@@ -362,11 +380,11 @@ router.post('/products', async (req, res) => {
       video2Id,
       video3: video3Url,
       video3Id,
-      inStock: Number(inStock),
+      inStock: totalStockFromVariants,
       size: size || '',
-      sizes: parsedSizes,
-      color: color || '',
-      colors: parsedColors,
+      sizes: finalSizes,
+      color: finalColor,
+      colors: finalColors,
       minStock: Number(minStock) || 5, // Default to 5 if not provided
       trending: trending === 'true' || trending === true,
       bestseller: bestseller === 'true' || bestseller === true,
@@ -505,7 +523,7 @@ router.put('/products/:id', async (req, res) => {
       description,
       brand,
       categoryId: categoryId || null,
-      inStock: Number(inStock),
+      inStock: Number(inStock) || 0,
       size: size || '',
       sizes: Array.isArray(sizes) ? sizes : (sizes ? [sizes] : []),
       color: color || '',
@@ -515,8 +533,12 @@ router.put('/products/:id', async (req, res) => {
       bestseller: bestseller === 'true' || bestseller === true,
       newarrival: newarrival === 'true' || newarrival === true,
       assured: assured === 'true' || assured === true,
-      ageGroups: Array.isArray(ageGroups) ? ageGroups : [ageGroups]
+      ageGroups: (Array.isArray(ageGroups) ? ageGroups : [ageGroups]).filter(group => group && group !== 'undefined')
     };
+
+    if (req.body.id && req.body.id !== '' && !isNaN(Number(req.body.id))) {
+      updateData.id = Number(req.body.id);
+    }
 
     // Update slug if name changed
     if (name && name !== existingProduct.name) {
@@ -569,7 +591,24 @@ router.put('/products/:id', async (req, res) => {
       }
       updateData.variants = variants;
     } else if (variants.length > 0) {
-      updateData.variants = variants;
+      updateData.variants = variants.map(v => {
+        const vColor = v.attributes?.color || v.color || v.name || '';
+        const vSize = v.attributes?.size || v.size || '';
+        return {
+          sku: v.sku || generateSKU(name, vColor, vSize),
+          attributes: {
+            color: vColor || undefined,
+            size: vSize || undefined
+          },
+          price: Number(v.price || price || 0),
+          stock: {
+            quantity: Number(v.stock?.quantity ?? v.inStock ?? 0),
+            minStock: Number(v.stock?.minStock ?? minStock ?? 5)
+          },
+          name: v.name || `${name}${vColor ? ' - ' + vColor : ''}${vSize ? ' - ' + vSize : ''}`,
+          inStock: Number(v.inStock ?? v.stock?.quantity ?? 0)
+        };
+      });
     } else {
       // Default single variant if none exists
       const sku = generateSKU(name);
@@ -586,6 +625,21 @@ router.put('/products/:id', async (req, res) => {
         name: name,
         inStock: existingVariant ? (existingVariant.stock?.quantity ?? existingVariant.inStock ?? 0) : (Number(inStock) || 0)
       }];
+    }
+
+    // Sync top-level inStock, sizes, and colors with variants
+    if (updateData.variants && updateData.variants.length > 0) {
+      updateData.inStock = updateData.variants.reduce((total, v) => {
+        return total + (Number(v.stock?.quantity ?? v.inStock) || 0);
+      }, 0);
+
+      // Auto-sync sizes and colors arrays from variants
+      const variantSizes = new Set(updateData.variants.map(v => v.attributes?.size || v.size).filter(Boolean));
+      const variantColors = new Set(updateData.variants.map(v => v.attributes?.color || v.color).filter(Boolean));
+      
+      if (variantSizes.size > 0) updateData.sizes = Array.from(variantSizes);
+      if (variantColors.size > 0) updateData.colors = Array.from(variantColors);
+      if (variantColors.size === 1) updateData.color = Array.from(variantColors)[0];
     }
     
     // Handle image upload if file is provided
@@ -852,34 +906,38 @@ router.put('/products/:id', async (req, res) => {
       }
     }
     
-    const existing = await Product.findById(req.params.id);
-    const updated = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true });
-    if (!updated) {
+    const productToUpdate = await Product.findById(req.params.id);
+    if (!productToUpdate) {
       return res.status(404).json({ message: 'Product not found' });
     }
 
+    // Update fields manually
+    Object.assign(productToUpdate, updateData);
+    
+    const updated = await productToUpdate.save();
+    
     // Inventory audit logs for changes
     try {
-      if (existing) {
+      if (existingProduct) {
         // Product-level change
-        if (typeof updateData.inStock === 'number' && updateData.inStock !== existing.inStock) {
+        if (typeof updateData.inStock === 'number' && updateData.inStock !== existingProduct.inStock) {
           await InventoryLog.create({
-            productId: existing._id,
-            productName: existing.name,
-            change: updateData.inStock - (existing.inStock || 0),
-            previousStock: existing.inStock || 0,
+            productId: existingProduct._id,
+            productName: existingProduct.name,
+            change: updateData.inStock - (existingProduct.inStock || 0),
+            previousStock: existingProduct.inStock || 0,
             newStock: updateData.inStock,
             reason: 'product-edit',
           });
         }
         if (Array.isArray(updateData.variants)) {
-          const mapExisting = new Map((existing.variants || []).map(v => [v.name, v]));
+          const mapExisting = new Map((existingProduct.variants || []).map(v => [v.name, v]));
           updateData.variants.forEach(v => {
             const prev = mapExisting.get(v.name);
             if (prev && typeof v.inStock === 'number' && v.inStock !== prev.inStock) {
               InventoryLog.create({
-                productId: existing._id,
-                productName: existing.name,
+                productId: existingProduct._id,
+                productName: existingProduct.name,
                 variantName: v.name,
                 change: v.inStock - (prev.inStock || 0),
                 previousStock: prev.inStock || 0,
@@ -1153,20 +1211,23 @@ router.put('/orders/:id', async (req, res) => {
     const isBecomingApproved = approvedStatuses.includes(newStatus) && nonApprovedStatuses.includes(oldStatus);
     const isBecomingUnapproved = nonApprovedStatuses.includes(newStatus) && approvedStatuses.includes(oldStatus);
 
-    // Handle stock decrement when order is approved
-    if (isBecomingApproved) {
+    // Handle stock decrement when order is approved or delivered
+    const isApproved = approvedStatuses.includes(newStatus);
+    if (isApproved && !order.stockDecremented) {
       try {
         await decrementStock(order.products || [], order._id);
+        order.stockDecremented = true;
       } catch (stockErr) {
-        console.error(`Error decrementing stock for approved order ${order._id}:`, stockErr);
+        console.error(`Error decrementing stock for approved/delivered order ${order._id}:`, stockErr);
       }
     }
 
     // Handle stock increment when order is cancelled or returned after being approved
-    if (isBecomingUnapproved) {
+    if (isBecomingUnapproved && order.stockDecremented) {
       const reason = newStatus === 'returned' ? 'order-returned' : 'order-cancelled';
       try {
         await incrementStock(order.products || [], order._id, reason);
+        order.stockDecremented = false;
       } catch (stockErr) {
         console.error(`Error incrementing stock for unapproved order ${order._id}:`, stockErr);
       }
@@ -1221,7 +1282,7 @@ router.delete('/orders/bulk', async (req, res) => {
     const ordersToProcess = await Order.find({ _id: { $in: ids } });
     
     for (const order of ordersToProcess) {
-      if (approvedStatuses.includes(String(order.status || '').toLowerCase())) {
+      if (order.stockDecremented) {
         try {
           await incrementStock(order.products || [], order._id, 'order-deleted');
         } catch (stockErr) {
@@ -1254,9 +1315,8 @@ router.delete('/orders/:id', async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Increment stock if the order was in an approved status
-    const approvedStatuses = ['processing', 'shipped', 'delivered'];
-    if (approvedStatuses.includes(String(order.status || '').toLowerCase())) {
+    // Increment stock if the order was decremented
+    if (order.stockDecremented) {
       try {
         await incrementStock(order.products || [], order._id, 'order-deleted');
       } catch (stockErr) {

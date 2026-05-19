@@ -60,4 +60,14 @@ const productSchema = new mongoose.Schema({
   }]
 }, { timestamps: true });
 
+productSchema.pre('save', function(next) {
+  if (this.variants && this.variants.length > 0) {
+    this.inStock = this.variants.reduce((total, variant) => {
+      const qty = variant.stock?.quantity ?? variant.inStock ?? 0;
+      return total + Number(qty);
+    }, 0);
+  }
+  next();
+});
+
 module.exports = mongoose.model('Product', productSchema);
