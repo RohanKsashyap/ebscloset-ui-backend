@@ -26,6 +26,7 @@ const discountRoutes = require('./routes/discounts');
 const newsletterRoutes = require('./routes/newsletter');
 const sitemapRoutes = require('./routes/sitemap');
 const ageCollectionRoutes = require('./routes/ageCollections');
+const blogRoutes = require('./routes/blogs');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -96,6 +97,7 @@ app.use('/api/site', siteRoutes);
 app.use('/api/discounts', discountRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/age-collections', ageCollectionRoutes);
+app.use('/api/blogs', blogRoutes);
 
 // Dynamic Sitemap at root
 app.use('/sitemap.xml', sitemapRoutes);

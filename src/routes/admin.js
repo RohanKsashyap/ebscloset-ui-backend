@@ -13,6 +13,7 @@ const DiscountCode = require('../models/DiscountCode');
 const Subscriber = require('../models/Subscriber');
 const Category = require('../models/Category');
 const AgeCategory = require('../models/AgeCategory');
+const Blog = require('../models/Blog');
 const adminAuth = require('../middleware/adminAuth');
 const { uploadImage, uploadImageFromUrl, deleteImage } = require('../utils/imageUpload');
 const { incrementStock, decrementStock } = require('../utils/inventory');
@@ -1768,6 +1769,92 @@ router.delete('/newsletter/:id', async (req, res) => {
     res.json({ success: true, message: 'Subscriber removed' });
   } catch (err) {
     res.status(500).json({ message: 'Error deleting subscriber' });
+  }
+});
+
+// Blog Management
+router.get('/blogs', async (req, res) => {
+  try {
+    const blogs = await Blog.find().sort({ createdAt: -1 });
+    res.json(blogs);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching blogs' });
+  }
+});
+
+router.post('/blogs', async (req, res) => {
+  try {
+    const { title, content, excerpt, author, category, published, tags } = req.body;
+    let imageUrl = '';
+    let imageId = '';
+
+    const imageFile = getFirstFile(req.files?.image);
+    if (imageFile) {
+      const upload = await uploadImage(imageFile, 'ebs-closet/blogs', 'blog');
+      imageUrl = upload.url;
+      imageId = upload.fileId;
+    }
+
+    const blog = await Blog.create({
+      title,
+      slug: generateSlug(title),
+      content,
+      excerpt,
+      author,
+      category,
+      published: published === 'true' || published === true,
+      tags: typeof tags === 'string' ? tags.split(',').map(t => t.trim()) : tags,
+      image: imageUrl,
+      imageId
+    });
+
+    res.json(blog);
+  } catch (err) {
+    res.status(500).json({ message: 'Error creating blog post' });
+  }
+});
+
+router.put('/blogs/:id', async (req, res) => {
+  try {
+    const { title, content, excerpt, author, category, published, tags } = req.body;
+    const updateData = {
+      title,
+      content,
+      excerpt,
+      author,
+      category,
+      published: published === 'true' || published === true,
+      tags: typeof tags === 'string' ? tags.split(',').map(t => t.trim()) : tags
+    };
+
+    const imageFile = getFirstFile(req.files?.image);
+    if (imageFile) {
+      const blog = await Blog.findById(req.params.id);
+      if (blog && blog.imageId) {
+        await deleteImage(blog.imageId);
+      }
+      const upload = await uploadImage(imageFile, 'ebs-closet/blogs', 'blog');
+      updateData.image = upload.url;
+      updateData.imageId = upload.fileId;
+    }
+
+    const blog = await Blog.findByIdAndUpdate(req.params.id, updateData, { new: true });
+    res.json(blog);
+  } catch (err) {
+    res.status(500).json({ message: 'Error updating blog post' });
+  }
+});
+
+router.delete('/blogs/:id', async (req, res) => {
+  try {
+    const blog = await Blog.findById(req.params.id);
+    if (blog && blog.imageId) {
+      await deleteImage(blog.imageId);
+    }
+    await Blog.findByIdAndDelete(req.params.id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ message: 'Error deleting blog post' });
   }
 });
 
