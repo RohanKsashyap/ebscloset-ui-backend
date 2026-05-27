@@ -151,6 +151,8 @@ router.post('/cod', async (req, res) => {
         fullName: customer.fullName,
         phone: customer.phone,
         address: customer.address,
+        suburb: customer.suburb,
+        state: customer.state,
         city: customer.city,
         postalCode: customer.postalCode,
         country: customer.country,
@@ -163,6 +165,8 @@ router.post('/cod', async (req, res) => {
           user.fullName = customer.fullName;
           user.phone = customer.phone;
           user.address = customer.address;
+          user.suburb = customer.suburb;
+          user.state = customer.state;
           user.city = customer.city;
           user.postalCode = customer.postalCode;
           user.country = customer.country;
@@ -182,6 +186,8 @@ router.post('/cod', async (req, res) => {
           fullName: customer.fullName,
           phone: customer.phone,
           address: customer.address,
+          suburb: customer.suburb,
+          state: customer.state,
           city: customer.city,
           postalCode: customer.postalCode,
           country: customer.country,

@@ -30,6 +30,8 @@ const UserSchema = new mongoose.Schema({
     type: { type: String, default: 'Home' },
     fullName: String,
     address: String,
+    suburb: String,
+    state: String,
     city: String,
     postalCode: String,
     country: String,
@@ -37,6 +39,14 @@ const UserSchema = new mongoose.Schema({
     isPrimary: { type: Boolean, default: false }
   }],
   address: {
+    type: String,
+    trim: true
+  },
+  suburb: {
+    type: String,
+    trim: true
+  },
+  state: {
     type: String,
     trim: true
   },
