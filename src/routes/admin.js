@@ -1008,16 +1008,44 @@ router.get('/categories', async (req, res) => {
       },
       { $sort: { displayOrder: 1, name: 1 } }
     ]);
-    res.json(categories);
+    // Populate parentCategory info
+    const populated = await Category.populate(categories, { path: 'parentCategory', select: 'name slug' });
+    res.json(populated);
   } catch (err) {
     console.error('Error fetching categories:', err);
     res.status(500).json({ message: 'Error fetching categories' });
   }
 });
 
+// Hierarchical tree for navigation
+router.get('/categories/tree', async (req, res) => {
+  try {
+    const all = await Category.find({ isActive: true }).sort({ displayOrder: 1, name: 1 });
+
+    const parents = all.filter(c => !c.parentCategory);
+    const tree = parents.map(p => {
+      const pid = p._id.toString();
+      const groups = all
+        .filter(c => c.parentCategory && c.parentCategory.toString() === pid)
+        .map(g => {
+          const gid = g._id.toString();
+          const items = all
+            .filter(c => c.parentCategory && c.parentCategory.toString() === gid)
+            .map(i => ({ _id: i._id, name: i.name, slug: i.slug, displayOrder: i.displayOrder }));
+          return { _id: g._id, name: g.name, slug: g.slug, displayOrder: g.displayOrder, items };
+        });
+      return { ...p.toObject(), subcategories: groups };
+    });
+
+    res.json(tree);
+  } catch (err) {
+    res.status(500).json({ message: 'Error fetching category tree' });
+  }
+});
+
 router.post('/categories', async (req, res) => {
   try {
-    const { name, description, slug, isActive, displayOrder } = req.body;
+    const { name, description, slug, isActive, displayOrder, parentCategory } = req.body;
     
     let imageUrl = '';
     let imageId = '';
@@ -1041,6 +1069,7 @@ router.post('/categories', async (req, res) => {
       slug: slug || name.toLowerCase().replace(/ /g, '-').replace(/[^\w-]+/g, ''),
       isActive: isActive !== undefined ? isActive : true,
       displayOrder: Number(displayOrder) || 0,
+      parentCategory: parentCategory || null,
       imageUrl,
       imageId,
       thumbnailUrl
@@ -1055,7 +1084,7 @@ router.post('/categories', async (req, res) => {
 
 router.put('/categories/:id', async (req, res) => {
   try {
-    const { name, description, slug, isActive, displayOrder } = req.body;
+    const { name, description, slug, isActive, displayOrder, parentCategory } = req.body;
     const category = await Category.findById(req.params.id);
     if (!category) {
       return res.status(404).json({ message: 'Category not found' });
@@ -1089,6 +1118,8 @@ router.put('/categories/:id', async (req, res) => {
     category.slug = slug || category.slug;
     category.isActive = isActive !== undefined ? isActive : category.isActive;
     category.displayOrder = displayOrder !== undefined ? Number(displayOrder) : category.displayOrder;
+    // parentCategory: empty string / 'none' means top-level
+    category.parentCategory = (parentCategory && parentCategory !== 'none') ? parentCategory : null;
     category.imageUrl = imageUrl;
     category.imageId = imageId;
     category.thumbnailUrl = thumbnailUrl;
@@ -1121,6 +1152,35 @@ router.delete('/categories/:id', async (req, res) => {
   } catch (err) {
     console.error('Error deleting category:', err);
     res.status(500).json({ message: 'Error deleting category' });
+  }
+});
+
+// Bulk delete categories
+router.delete('/categories', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'No category IDs provided' });
+    }
+
+    const categoriesToDelete = await Category.find({ _id: { $in: ids } });
+
+    // Delete associated images from ImageKit
+    for (const cat of categoriesToDelete) {
+      if (cat.imageId) {
+        try {
+          await deleteImage(cat.imageId);
+        } catch (err) {
+          console.error(`Failed to delete image for category ${cat._id}:`, err);
+        }
+      }
+    }
+
+    const result = await Category.deleteMany({ _id: { $in: ids } });
+    res.json({ success: true, deletedCount: result.deletedCount });
+  } catch (err) {
+    console.error('Error bulk deleting categories:', err);
+    res.status(500).json({ message: 'Error bulk deleting categories' });
   }
 });
 
