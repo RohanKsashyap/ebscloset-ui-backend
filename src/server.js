@@ -46,14 +46,21 @@ app.use(cors({
 // Stripe webhook needs raw body
 app.use('/api/checkout/webhook', express.raw({ type: 'application/json' }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 
 // Global middleware for file uploads
 app.use(fileUpload({
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max file size
+  limits: {
+    fileSize: 50 * 1024 * 1024,  // 50MB per individual file
+    files: 10,                    // max 10 files per request
+  },
+  abortOnLimit: true,             // abort the request if limit is exceeded
+  responseOnLimit: 'File size limit exceeded. Maximum allowed size is 50MB per file.',
   useTempFiles: true,
-  tempFileDir: os.tmpdir()
+  tempFileDir: os.tmpdir(),
+  safeFileNames: true,
+  preserveExtension: true,
 }));
 
 // Security and compression
