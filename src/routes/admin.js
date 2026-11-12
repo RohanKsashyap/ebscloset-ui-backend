@@ -145,6 +145,14 @@ router.post('/products', async (req, res) => {
     let image4Url = '';
     let image4Id = '';
 
+    // Image 5 fields
+    let image5Url = '';
+    let image5Id = '';
+
+    // Image 6 fields
+    let image6Url = '';
+    let image6Id = '';
+
     // Video fields
     let videoUrl = '';
     let videoId = '';
@@ -218,6 +226,34 @@ router.post('/products', async (req, res) => {
       }
     } else {
       image4Url = sanitizeString(req.body.image4);
+    }
+
+    // Handle image 5 upload (optional)
+    const image5File = getFirstFile(req.files?.image5);
+    if (image5File) {
+      try {
+        const upload5 = await uploadImage(image5File, 'ebs-closet/products', 'product-5');
+        image5Url = upload5.url;
+        image5Id = upload5.fileId;
+      } catch (uploadError) {
+        console.error('Image 5 upload failed:', uploadError);
+      }
+    } else {
+      image5Url = sanitizeString(req.body.image5);
+    }
+
+    // Handle image 6 upload (optional)
+    const image6File = getFirstFile(req.files?.image6);
+    if (image6File) {
+      try {
+        const upload6 = await uploadImage(image6File, 'ebs-closet/products', 'product-6');
+        image6Url = upload6.url;
+        image6Id = upload6.fileId;
+      } catch (uploadError) {
+        console.error('Image 6 upload failed:', uploadError);
+      }
+    } else {
+      image6Url = sanitizeString(req.body.image6);
     }
 
     // Handle video upload (optional)
@@ -375,6 +411,10 @@ router.post('/products', async (req, res) => {
       image3Id,
       image4: image4Url,
       image4Id,
+      image5: image5Url,
+      image5Id,
+      image6: image6Url,
+      image6Id,
       video: videoUrl,
       videoId,
       video2: video2Url,
@@ -465,6 +505,8 @@ router.delete('/products/bulk', async (req, res) => {
         product.hoverImageId,
         product.image3Id,
         product.image4Id,
+        product.image5Id,
+        product.image6Id,
         product.videoId,
         product.video2Id,
         product.video3Id
@@ -794,6 +836,78 @@ router.put('/products/:id', async (req, res) => {
           updateData.image4 = image4;
           if (!image4.includes('ik.imagekit.io')) {
             updateData.image4Id = '';
+          }
+        }
+      }
+    }
+
+    // Optional image 5 update
+    const image5File = getFirstFile(req.files?.image5);
+    if (image5File) {
+      try {
+        const existingProduct = await Product.findById(req.params.id);
+        if (existingProduct && existingProduct.image5Id) {
+          await deleteImage(existingProduct.image5Id);
+        }
+        const upload5 = await uploadImage(image5File, 'ebs-closet/products', 'product-5');
+        updateData.image5 = upload5.url;
+        updateData.image5Id = upload5.fileId;
+      } catch (e) {
+        console.error('Image 5 upload failed during update:', e);
+      }
+    } else {
+      const image5 = sanitizeString(req.body.image5);
+      if (req.body.image5 !== undefined) {
+        const existingProduct = await Product.findById(req.params.id);
+        if (image5 === '') {
+          if (existingProduct && existingProduct.image5Id) {
+            try { await deleteImage(existingProduct.image5Id); } catch (e) { console.error('Failed to delete old image5:', e); }
+          }
+          updateData.image5 = '';
+          updateData.image5Id = '';
+        } else if (image5) {
+          if (existingProduct && existingProduct.image5Id && existingProduct.image5 !== image5) {
+            try { await deleteImage(existingProduct.image5Id); } catch (e) { console.error('Failed to delete old image5:', e); }
+          }
+          updateData.image5 = image5;
+          if (!image5.includes('ik.imagekit.io')) {
+            updateData.image5Id = '';
+          }
+        }
+      }
+    }
+
+    // Optional image 6 update
+    const image6File = getFirstFile(req.files?.image6);
+    if (image6File) {
+      try {
+        const existingProduct = await Product.findById(req.params.id);
+        if (existingProduct && existingProduct.image6Id) {
+          await deleteImage(existingProduct.image6Id);
+        }
+        const upload6 = await uploadImage(image6File, 'ebs-closet/products', 'product-6');
+        updateData.image6 = upload6.url;
+        updateData.image6Id = upload6.fileId;
+      } catch (e) {
+        console.error('Image 6 upload failed during update:', e);
+      }
+    } else {
+      const image6 = sanitizeString(req.body.image6);
+      if (req.body.image6 !== undefined) {
+        const existingProduct = await Product.findById(req.params.id);
+        if (image6 === '') {
+          if (existingProduct && existingProduct.image6Id) {
+            try { await deleteImage(existingProduct.image6Id); } catch (e) { console.error('Failed to delete old image6:', e); }
+          }
+          updateData.image6 = '';
+          updateData.image6Id = '';
+        } else if (image6) {
+          if (existingProduct && existingProduct.image6Id && existingProduct.image6 !== image6) {
+            try { await deleteImage(existingProduct.image6Id); } catch (e) { console.error('Failed to delete old image6:', e); }
+          }
+          updateData.image6 = image6;
+          if (!image6.includes('ik.imagekit.io')) {
+            updateData.image6Id = '';
           }
         }
       }

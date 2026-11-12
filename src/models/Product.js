@@ -20,6 +20,10 @@ const productSchema = new mongoose.Schema({
   image3Id: { type: String, default: '' },
   image4: { type: String, default: '' },
   image4Id: { type: String, default: '' },
+  image5: { type: String, default: '' },
+  image5Id: { type: String, default: '' },
+  image6: { type: String, default: '' },
+  image6Id: { type: String, default: '' },
   
   video: { type: String, default: '' },
   videoId: { type: String, default: '' },
